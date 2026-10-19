@@ -1,0 +1,143 @@
+{
+  "publisher": "codebridge",
+  "name": "workbench",
+  "version": "1.0.0",
+  "contributes": {
+    "configuration": [
+      {
+        "id": "files",
+        "title": "Files",
+        "properties": {
+          "files.exclude": {
+            "type": "object",
+            "markdownDescription": "Configure [glob patterns](https://code.visualstudio.com/docs/editor/codebasics#_advanced-search-options) for excluding files and folders. Extensions' workspace file searches leave these out.",
+            "default": {
+              "**/.git": true,
+              "**/.svn": true,
+              "**/.hg": true,
+              "**/.DS_Store": true,
+              "**/Thumbs.db": true
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean",
+                  "description": "The glob pattern to match file paths against. Set to true or false to enable or disable the pattern."
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "when": {
+                      "type": "string",
+                      "pattern": "\\w*\\$\\(basename\\)\\w*",
+                      "default": "$(basename).ext",
+                      "markdownDescription": "Additional check on the siblings of a matching file. Use `$(basename)` as variable for the matching file name."
+                    }
+                  }
+                }
+              ]
+            },
+            "scope": "resource"
+          },
+          "files.watcherExclude": {
+            "type": "object",
+            "markdownDescription": "Configure [glob patterns](https://code.visualstudio.com/docs/editor/codebasics#_advanced-search-options) of file paths to exclude from file watching. Paths that change often, such as build output, are best left out to limit the watchers registered.",
+            "default": {
+              "**/.git/objects/**": true,
+              "**/.git/subtree-cache/**": true,
+              "**/.hg/store/**": true
+            },
+            "additionalProperties": {
+              "type": "boolean"
+            },
+            "scope": "resource"
+          },
+          "files.autoSave": {
+            "type": "string",
+            "enum": [
+              "off",
+              "afterDelay",
+              "onFocusChange",
+              "onWindowChange"
+            ],
+            "enumDescriptions": [
+              "An editor with changes is never automatically saved.",
+              "An editor with changes is automatically saved after the configured `files.autoSaveDelay`.",
+              "An editor with changes is automatically saved when the editor loses focus.",
+              "An editor with changes is automatically saved when the window loses focus."
+            ],
+            "default": "afterDelay",
+            "markdownDescription": "Controls auto save of editors that have unsaved changes. Unlike VS Code, which defaults to `off`, CodeBridge saves after `files.autoSaveDelay` unless told otherwise, so extensions that read files from disk see current text. `onFocusChange` and `onWindowChange` leave saving to the IDE, as `off` does.",
+            "scope": "language-overridable"
+          },
+          "files.autoSaveDelay": {
+            "type": "number",
+            "default": 300,
+            "minimum": 0,
+            "markdownDescription": "Controls the delay in milliseconds after which an editor with unsaved changes is saved automatically. Only applies when `files.autoSave` is set to `afterDelay`.",
+            "scope": "language-overridable"
+          }
+        }
+      },
+      {
+        "id": "editor",
+        "title": "Text Editor",
+        "properties": {
+          "editor.formatOnType": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "Controls whether the editor should automatically format the line after typing, by asking an extension's on-type formatter when one of the characters it names is typed.",
+            "scope": "language-overridable"
+          },
+          "editor.linkedEditing": {
+            "type": "boolean",
+            "default": false,
+            "markdownDescription": "Controls whether the editor has linked editing enabled. Depending on the language, related symbols such as HTML tags are updated while editing, as an extension's linked editing range provider says.",
+            "scope": "language-overridable"
+          }
+        }
+      },
+      {
+        "id": "search",
+        "title": "Search",
+        "properties": {
+          "search.exclude": {
+            "type": "object",
+            "markdownDescription": "Configure [glob patterns](https://code.visualstudio.com/docs/editor/codebasics#_advanced-search-options) for excluding files and folders in searches, in addition to `files.exclude`. Folders matched are excluded from the project, so the IDE neither indexes nor searches them.",
+            "default": {
+              "**/node_modules": true,
+              "**/bower_components": true,
+              "**/*.code-search": true
+            },
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "boolean",
+                  "description": "The glob pattern to match file paths against. Set to true or false to enable or disable the pattern."
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "when": {
+                      "type": "string",
+                      "pattern": "\\w*\\$\\(basename\\)\\w*",
+                      "default": "$(basename).ext",
+                      "markdownDescription": "Additional check on the siblings of a matching file. Use `$(basename)` as variable for the matching file name."
+                    }
+                  }
+                }
+              ]
+            },
+            "scope": "resource"
+          },
+          "search.useIgnoreFiles": {
+            "type": "boolean",
+            "markdownDescription": "Controls whether to use `.gitignore` and `.ignore` files when searching. Folders they ignore, such as build output, are excluded from the project, so the IDE neither indexes nor searches them.",
+            "default": true,
+            "scope": "resource"
+          }
+        }
+      }
+    ]
+  }
+}

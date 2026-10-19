@@ -1,0 +1,26 @@
+<idea-plugin>
+    <dependencies>
+        <module name="intellij.platform.frontend"/>
+        <module name="CodeBridge.frontend" namespace="codebridge"/>
+        <module name="CodeBridge.shared" namespace="codebridge"/>
+        <module name="CodeBridge.workspace.shared"/>
+    </dependencies>
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Asks which `.code-workspace` file to open the project with, as VS Code suggests one it finds. -->
+        <postStartupActivity implementation="me.helvert.codebridge.settings.CodeBridgeWorkspaceSuggestion"/>
+    </extensions>
+    <actions>
+        <action id="CodeBridge.OpenWorkspaceSettings" class="me.helvert.codebridge.settings.OpenWorkspaceSettingsAction"
+                text="Open VS Code Workspace Settings (JSON)" description="Edit the project's .vscode/settings.json, creating it if there is none">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+        <action id="CodeBridge.OpenLaunchJson" class="me.helvert.codebridge.settings.OpenLaunchJsonAction"
+                text="Open VS Code launch.json" description="Edit the project's .vscode/launch.json, creating it from a debugger's initial configurations if there is none">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+        <action id="CodeBridge.OpenTasksJson" class="me.helvert.codebridge.settings.OpenTasksJsonAction"
+                text="Open VS Code tasks.json" description="Edit the project's .vscode/tasks.json, creating it if there is none">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>

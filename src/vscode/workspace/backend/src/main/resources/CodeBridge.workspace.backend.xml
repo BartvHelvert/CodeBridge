@@ -1,0 +1,34 @@
+<idea-plugin>
+    <dependencies>
+        <module name="intellij.platform.backend"/>
+        <module name="intellij.platform.rpc.backend"/>
+        <module name="CodeBridge.backend" namespace="codebridge"/>
+        <module name="CodeBridge.shared" namespace="codebridge"/>
+        <module name="CodeBridge.workspace.shared"/>
+    </dependencies>
+    <extensions defaultExtensionNs="me.helvert.codebridge">
+        <!-- Its presence is what makes the runtime read `.vscode/` and a chosen `.code-workspace` file. -->
+        <vsCodeFiles/>
+    </extensions>
+    <extensions defaultExtensionNs="com.intellij">
+        <platform.rpc.backend.remoteApiProvider implementation="me.helvert.codebridge.rpc.WorkspaceRpcApiProvider"/>
+        <!-- A `.code-workspace` file's folders outside the project directory, indexed like a library. -->
+        <additionalLibraryRootsProvider implementation="me.helvert.codebridge.workbench.CodeBridgeWorkspaceFolderRoots"/>
+        <!-- Folders VS Code leaves out of search (files.exclude, search.exclude, .gitignore), excluded. -->
+        <directoryIndexExcludePolicy implementation="me.helvert.codebridge.workbench.CodeBridgeExcludePolicy"/>
+        <!-- Which VS Code workspace the project is opened with, on its node in the Project view. -->
+        <projectViewNodeDecorator implementation="me.helvert.codebridge.workbench.CodeBridgeWorkspaceNodeDecorator"/>
+    </extensions>
+    <actions>
+        <group id="CodeBridge.WorkspaceOnProjectNode" class="me.helvert.codebridge.workbench.CodeBridgeWorkspaceMenu$OnProjectNode"
+               text="VS Code Workspace"
+               description="Open the project with one of its .code-workspace files as a multi-root workspace, or the folder alone">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </group>
+        <group id="CodeBridge.WorkspaceInTools" class="me.helvert.codebridge.workbench.CodeBridgeWorkspaceMenu$InTools"
+               text="VS Code Workspace"
+               description="Open the project with one of its .code-workspace files as a multi-root workspace, or the folder alone">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </group>
+    </actions>
+</idea-plugin>

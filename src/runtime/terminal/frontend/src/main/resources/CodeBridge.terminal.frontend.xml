@@ -1,0 +1,15 @@
+<idea-plugin>
+    <dependencies>
+        <module name="intellij.platform.frontend"/>
+        <module name="intellij.platform.project"/>
+        <module name="CodeBridge.shared"/>
+        <plugin id="org.jetbrains.plugins.terminal"/>
+        <!-- `TerminalToolWindowTabsManager`, which makes a tab with a given shell, directory and
+             environment and types into it. Public, and on the frontend: in split mode that is where
+             the Terminal tool window's tabs are made. -->
+        <module name="intellij.terminal.frontend"/>
+    </dependencies>
+    <extensions defaultExtensionNs="com.intellij">
+        <postStartupActivity implementation="me.helvert.codebridge.terminal.CodeBridgeTerminalRequestsActivity"/>
+    </extensions>
+</idea-plugin>

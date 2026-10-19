@@ -1,0 +1,21 @@
+name: Feature request
+description: A VS Code API, an extension feature or a part of CodeBridge you'd like to see supported.
+labels: [ enhancement ]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What you'd like
+      description: What should work, and how you'd expect it to look in the IDE.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Which extensions need it
+      description: The extensions, and the features of them, that this would make work.
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else
+      description: Links to the VS Code API, or how the IDE handles something similar.

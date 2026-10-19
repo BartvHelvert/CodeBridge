@@ -1,0 +1,8 @@
+<component name="ProjectRunConfigurationManager">
+    <configuration default="false" name="IntelliJ IDEA (Split Mode)" type="CompoundRunConfigurationType"
+                   factoryName="Compound Run Configuration">
+        <toRun type="GradleRunConfiguration" name="IntelliJ IDEA Backend (Split Mode)"/>
+        <toRun type="GradleRunConfiguration" name="IntelliJ IDEA Frontend (Split Mode)"/>
+        <method v="2"/>
+    </configuration>
+</component>

@@ -1,0 +1,22 @@
+<idea-plugin>
+    <dependencies>
+        <!-- Backend-only in its own right, not just through `CodeBridge.backend`. -->
+        <module name="intellij.platform.backend"/>
+        <module name="CodeBridge.backend"/>
+        <module name="CodeBridge.shared"/>
+        <plugin id="org.jetbrains.plugins.textmate"/>
+        <module name="intellij.textmate"/>
+    </dependencies>
+    <extensions defaultExtensionNs="com.intellij">
+        <textmate.bundleProvider implementation="me.helvert.codebridge.textmate.CodeBridgeTextMateBundles"/>
+        <enterBetweenBracesDelegate language="textmate"
+                                    implementationClass="me.helvert.codebridge.textmate.CodeBridgeTextMateEnterBetweenBraces"/>
+    </extensions>
+    <extensions defaultExtensionNs="me.helvert.codebridge">
+        <fileLanguage implementation="me.helvert.codebridge.textmate.CodeBridgeTextMateFileLanguage"/>
+    </extensions>
+    <applicationListeners>
+        <listener class="me.helvert.codebridge.textmate.CodeBridgeTextMateInstallationListener"
+                  topic="me.helvert.codebridge.extensions.ExtensionInstallationListener"/>
+    </applicationListeners>
+</idea-plugin>

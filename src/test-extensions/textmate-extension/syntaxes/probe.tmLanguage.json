@@ -1,0 +1,15 @@
+{
+  "name": "CodeBridge Grammar",
+  "scopeName": "source.codebridgegrammar",
+  "patterns": [
+    {
+      "name": "keyword.control.codebridgegrammar",
+      "match": "\\bPROBE\\b"
+    },
+    {
+      "name": "string.quoted.double.codebridgegrammar",
+      "begin": "\"",
+      "end": "\""
+    }
+  ]
+}

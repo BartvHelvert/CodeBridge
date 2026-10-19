@@ -1,0 +1,11 @@
+<!-- File types every side of the IDE must agree on, so it holds nothing that needs the backend:
+     in split mode the client opens a file by the type it gives it. No classes of its own. -->
+<idea-plugin package="me.helvert.codebridge.jsonfiles">
+    <dependencies>
+        <module name="intellij.json"/>
+    </dependencies>
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- VS Code's multi-root workspace file, which VS Code reads as JSON with comments. -->
+        <fileType name="JSON" extensions="code-workspace"/>
+    </extensions>
+</idea-plugin>

@@ -1,0 +1,20 @@
+<idea-plugin>
+    <dependencies>
+        <module name="intellij.platform.frontend"/>
+        <module name="CodeBridge.frontend" namespace="codebridge"/>
+        <module name="CodeBridge.shared" namespace="codebridge"/>
+        <module name="CodeBridge.marketplace.shared"/>
+    </dependencies>
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Plugins' own weight: the tie falls to the display name, which puts this right below it. -->
+        <applicationConfigurable parentId="root" groupWeight="55" id="me.helvert.codebridge.extensions"
+                                 displayName="VS Code Extensions"
+                                 instance="me.helvert.codebridge.extensions.VsCodeExtensionsConfigurable"/>
+    </extensions>
+    <actions>
+        <action id="CodeBridge.InstallVsix" class="me.helvert.codebridge.extensions.InstallVsixAction"
+                text="Install VS Code Extension from VSIX?" description="Install a VSIX into CodeBridge on the extension host machine">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+    </actions>
+</idea-plugin>

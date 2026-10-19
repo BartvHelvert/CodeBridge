@@ -1,0 +1,21 @@
+<idea-plugin>
+    <!-- Everything that is only possible through the platform's internal API, kept apart so a build
+         with `-PinternalApi=false` can leave it out; see the root build. -->
+    <dependencies>
+        <!-- Backend-only in its own right, not just through `CodeBridge.backend`. -->
+        <module name="intellij.platform.backend"/>
+        <module name="CodeBridge.backend"/>
+    </dependencies>
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Breadcrumbs and sticky lines from an extension's document symbols, for files the IDE has no
+             structure of its own for; the platform reads both through a file's breadcrumbs collector. -->
+        <fileBreadcrumbsCollector implementation="me.helvert.codebridge.internal.CodeBridgeBreadcrumbsCollector"/>
+        <!-- No plugin suggestion for a file an enabled extension already supports. -->
+        <pluginAdvertiserSuppressor implementation="me.helvert.codebridge.internal.CodeBridgePluginAdvertiserSuppressor"/>
+    </extensions>
+    <extensions defaultExtensionNs="me.helvert.codebridge">
+        <outlineRedrawer implementation="me.helvert.codebridge.internal.CodeBridgeInternalOutlineRedrawer"/>
+        <!-- Diagnostics drawn as soon as they arrive, rather than after the auto-reparse delay. -->
+        <daemonRestarter implementation="me.helvert.codebridge.internal.CodeBridgeInternalDaemonRestarter"/>
+    </extensions>
+</idea-plugin>

@@ -1,0 +1,30 @@
+{
+  "name": "textmate-probe",
+  "publisher": "codebridge",
+  "displayName": "CodeBridge TextMate Probe",
+  "version": "1.0.0",
+  "engines": {
+    "vscode": "*"
+  },
+  "contributes": {
+    "languages": [
+      {
+        "id": "codebridgegrammar",
+        "extensions": [
+          ".codebridgegrammar"
+        ],
+        "configuration": "./language-configuration.json",
+        "aliases": [
+          "CodeBridge Grammar"
+        ]
+      }
+    ],
+    "grammars": [
+      {
+        "language": "codebridgegrammar",
+        "scopeName": "source.codebridgegrammar",
+        "path": "./syntaxes/probe.tmLanguage.json"
+      }
+    ]
+  }
+}

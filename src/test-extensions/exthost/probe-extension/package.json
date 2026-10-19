@@ -1,0 +1,10 @@
+{
+  "name": "probe",
+  "publisher": "codebridge",
+  "version": "0.0.1",
+  "displayName": "CodeBridge Probe",
+  "engines": { "vscode": "^1.60.0" },
+  "main": "./extension.js",
+  "activationEvents": ["*"],
+  "contributes": {}
+}

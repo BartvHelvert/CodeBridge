@@ -1,0 +1,23 @@
+<idea-plugin>
+    <id>me.helvert.codebridge.bundled</id>
+    <name>CodeBridge Bundled Extensions</name>
+    <vendor email="bartvanhelvert1@gmail.com">Bart van Helvert</vendor>
+    <!-- The runtime runs what this hands it: the extensions other plugins ship. -->
+    <depends>me.helvert.codebridge.runtime</depends>
+    <description><![CDATA[
+        <p>
+        Runs the VS Code extensions other plugins ship. A plugin made from a VS Code extension depends
+        on this, so the extension works as one of the IDE's own features: you don't need VS Code or
+        Node.js installed, and nothing else of VS Code comes with it.
+        </p>
+        <p>
+        To browse and install VS Code extensions yourself, and to use a project's <code>.vscode</code>
+        folder, install <b>CodeBridge</b>.
+        </p>
+    ]]></description>
+
+    <!-- The runtime's namespace, so this module may depend on the runtime's that it lets in. -->
+    <content namespace="codebridge">
+        <module name="CodeBridge.bundled.backend"/>
+    </content>
+</idea-plugin>

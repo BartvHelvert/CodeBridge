@@ -1,0 +1,79 @@
+<!-- Internal: CodeBridge's modules, in the same namespace, build on this one. -->
+<idea-plugin visibility="internal">
+    <dependencies>
+        <module name="intellij.platform.frontend"/>
+        <module name="intellij.platform.project"/>
+        <!-- `VirtualFileId.virtualFile()`, for files the backend asks this client to open. -->
+        <module name="intellij.platform.ide.impl"/>
+        <module name="CodeBridge.protocol"/>
+        <module name="CodeBridge.shared"/>
+        <!-- The debugger's frames list and its frames, for what extensions add to the Call Stack menu. -->
+        <module name="intellij.platform.debugger"/>
+        <module name="intellij.platform.debugger.impl.ui"/>
+    </dependencies>
+
+    <extensionPoints>
+        <!-- Draws webview views in the tool windows of their containers; see `CodeBridgeWebviewViewFactory`. -->
+        <extensionPoint qualifiedName="me.helvert.codebridge.webviewViewFactory"
+                        interface="me.helvert.codebridge.views.CodeBridgeWebviewViewFactory" dynamic="true"/>
+    </extensionPoints>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <applicationConfigurable parentId="tools" id="me.helvert.codebridge"
+                                 displayName="CodeBridge"
+                                 instance="me.helvert.codebridge.settings.CodeBridgeConfigurable"/>
+        <notificationGroup id="CodeBridge" displayType="BALLOON"/>
+        <!-- Extensions' `showInformationMessage` and friends, and answers to the ones that ask. -->
+        <postStartupActivity implementation="me.helvert.codebridge.messages.CodeBridgeMessagesActivity"/>
+        <!-- Links extensions open (`env.openExternal`) and their clipboard (`env.clipboard`): this side's browser and
+             clipboard, which in split mode are the user's. An untrusted site is asked about first. -->
+        <postStartupActivity implementation="me.helvert.codebridge.messages.CodeBridgeClientRequestsActivity"/>
+        <!-- Icons extensions contribute (`contributes.icons`), such as GitLens's `$(gitlens-*)`, for what this side draws. -->
+        <postStartupActivity implementation="me.helvert.codebridge.icons.CodeBridgeContributedIconsActivity"/>
+        <!-- Extensions' quick picks and input boxes, and launch.json's inputs, answered here. -->
+        <postStartupActivity implementation="me.helvert.codebridge.messages.CodeBridgeQuickInputsActivity"/>
+        <postStartupActivity implementation="me.helvert.codebridge.editors.CodeBridgeOpenRequestsActivity"/>
+        <!-- Links into the editor (`vscodium://publisher.name/...`) an extension hands to the browser, served
+             on this side's built-in web server: the browser is on this machine, in split mode not the backend's. -->
+        <postStartupActivity implementation="me.helvert.codebridge.editors.CodeBridgeAppLinksActivity"/>
+        <httpRequestHandler implementation="me.helvert.codebridge.editors.CodeBridgeAppLinks"/>
+        <!-- Extensions' decorations painted on this side's documents, so the paint moves as the user types. -->
+        <postStartupActivity implementation="me.helvert.codebridge.editors.CodeBridgeDecorationsActivity"/>
+        <!-- Extensions' tree views, a tool window per view container they belong to. -->
+        <postStartupActivity implementation="me.helvert.codebridge.views.CodeBridgeTreeViewsActivity"/>
+        <!-- Select In > Extension View, for files only an extension's tree view lists, such as library sources. -->
+        <selectInTarget implementation="me.helvert.codebridge.views.CodeBridgeTreeViewSelectInTarget"/>
+        <!-- Suggests a `.code-workspace` file in the project directory, as VS Code does on opening a folder. -->
+        <!-- What extensions show in VS Code's status bar: for a language server, whether it is ready.
+             Leftmost of the widgets, ahead of the caret position and encoding, rather than among them. -->
+        <statusBarWidgetFactory id="CodeBridge.ExtensionStatus" order="first"
+                                implementation="me.helvert.codebridge.status.CodeBridgeStatusBarWidgetFactory"/>
+        <!-- Tab through an inserted template's placeholders, ahead of the editor's own Tab. -->
+        <actionPromoter implementation="me.helvert.codebridge.completion.SnippetStopActionPromoter"/>
+        <!-- Links in a problem's tooltip to a document an extension provides, as rust-analyzer's
+             "Click for full compiler diagnostic". Keep the prefix in step with CodeBridgeDiagnosticsAnnotator. -->
+        <codeInsight.linkHandler prefix="#codebridge-provided:" handlerClass="me.helvert.codebridge.editors.CodeBridgeProvidedDocumentLinks"/>
+    </extensions>
+    <actions>
+        <action id="CodeBridge.OpenUserSettings" class="me.helvert.codebridge.settings.OpenUserSettingsAction"
+                text="Open VS Code User Settings (JSON)" description="Edit the settings.json every project's VS Code extensions read, beneath the project's own .vscode/settings.json">
+            <add-to-group group-id="ToolsMenu" anchor="last"/>
+        </action>
+        <!-- What extensions add to VS Code's Call Stack menu, such as CodeLLDB's Exclude Caller. -->
+        <group id="CodeBridge.CallStackActions" class="me.helvert.codebridge.debug.CodeBridgeCallStackActions">
+            <add-to-group group-id="XDebugger.Frames.Tree.Popup" anchor="last"/>
+        </group>
+        <action id="CodeBridge.NextSnippetStop" class="me.helvert.codebridge.completion.NextSnippetStopAction"
+                text="Next Snippet Placeholder" description="Go to the next placeholder of an inserted VS Code template">
+            <keyboard-shortcut keymap="$default" first-keystroke="TAB"/>
+        </action>
+        <action id="CodeBridge.PreviousSnippetStop" class="me.helvert.codebridge.completion.PreviousSnippetStopAction"
+                text="Previous Snippet Placeholder" description="Go back to the previous placeholder of an inserted VS Code template">
+            <keyboard-shortcut keymap="$default" first-keystroke="shift TAB"/>
+        </action>
+        <action id="CodeBridge.ExitSnippet" class="me.helvert.codebridge.completion.ExitSnippetAction"
+                text="Leave Snippet Placeholders" description="Stop walking the placeholders of an inserted VS Code template">
+            <keyboard-shortcut keymap="$default" first-keystroke="ESCAPE"/>
+        </action>
+    </actions>
+</idea-plugin>

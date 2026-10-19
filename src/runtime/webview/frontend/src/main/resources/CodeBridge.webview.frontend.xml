@@ -1,0 +1,22 @@
+<idea-plugin>
+    <dependencies>
+        <module name="CodeBridge.frontend"/>
+        <module name="CodeBridge.shared"/>
+        <module name="intellij.platform.frontend"/>
+        <module name="intellij.platform.project"/>
+        <plugin id="com.intellij.modules.jcef"/>
+        <module name="intellij.platform.ui.jcef"/>
+        <module name="intellij.libraries.jcef"/>
+    </dependencies>
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- Extensions' webview panels, each an editor tab showing its page. -->
+        <fileEditorProvider implementation="me.helvert.codebridge.webview.CodeBridgeWebviewEditorProvider"/>
+        <editorTabTitleProvider implementation="me.helvert.codebridge.webview.CodeBridgeWebviewTabTitles"/>
+        <fileIconProvider implementation="me.helvert.codebridge.webview.CodeBridgeWebviewIcons"/>
+        <postStartupActivity implementation="me.helvert.codebridge.webview.CodeBridgeWebviewsActivity"/>
+    </extensions>
+    <extensions defaultExtensionNs="me.helvert.codebridge">
+        <!-- Webview views, in the tool windows the frontend makes for view containers. -->
+        <webviewViewFactory implementation="me.helvert.codebridge.webview.CodeBridgeWebviewViews"/>
+    </extensions>
+</idea-plugin>

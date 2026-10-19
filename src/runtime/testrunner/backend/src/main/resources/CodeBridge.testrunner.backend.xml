@@ -1,0 +1,26 @@
+<idea-plugin>
+    <dependencies>
+        <!-- Backend-only in its own right, not just through `CodeBridge.backend`. -->
+        <module name="intellij.platform.backend"/>
+        <module name="CodeBridge.backend"/>
+        <module name="CodeBridge.protocol"/>
+        <module name="CodeBridge.shared"/>
+        <module name="intellij.platform.debugger"/>
+        <plugin id="intellij.testRunner.plugin"/>
+        <module name="intellij.platform.testRunner"/>
+        <module name="intellij.platform.smRunner"/>
+    </dependencies>
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- The tests extensions declare, run as a configuration whose console is the IDE's test runner. -->
+        <configurationType implementation="me.helvert.codebridge.testing.ui.CodeBridgeTestConfigurationType"/>
+        <!-- Run and Debug for the nodes of a test run's tree, and for the test at the caret. -->
+        <runConfigurationProducer implementation="me.helvert.codebridge.testing.ui.CodeBridgeTestConfigurationProducer"/>
+        <!-- Debug, for the same configuration: the extension's debug profile starts the debugger itself. -->
+        <programRunner implementation="me.helvert.codebridge.testing.ui.CodeBridgeTestDebugRunner"/>
+        <!-- Run and Debug in the gutter of every test an extension has placed in a file. An empty
+             `language`, for every language, as the diagnostics annotator is registered. -->
+        <codeInsight.lineMarkerProvider language="" implementationClass="me.helvert.codebridge.testing.ui.CodeBridgeTestLineMarkers"/>
+        <!-- Shows the runs extensions start themselves, and redraws gutters as tests change. -->
+        <postStartupActivity implementation="me.helvert.codebridge.testing.ui.CodeBridgeTestingActivity"/>
+    </extensions>
+</idea-plugin>

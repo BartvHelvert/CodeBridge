@@ -1,0 +1,54 @@
+.gradle
+.gradle-split/
+.npm-cache/
+node_modules/
+build/
+!gradle/wrapper/gradle-wrapper.jar
+!src/backend/sources/main/**/build/
+!src/backend/sources/test/**/build/
+
+### Test reports ###
+# ide-starter writes Allure results to the module root rather than under build/. One JSON per
+# test per run, never pruned, carrying local absolute paths.
+allure-results/
+allure-report/
+
+### IntelliJ IDEA ###
+.idea
+!/.idea/
+/.idea/*
+!/.idea/icon.svg
+!/.idea/runConfigurations/
+*.iws
+*.iml
+*.ipr
+out/
+!src/backend/sources/main/**/out/
+!src/backend/sources/test/**/out/
+.intellijPlatform/
+.kotlin/
+
+### Eclipse ###
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+bin/
+!src/backend/sources/main/**/bin/
+!src/backend/sources/test/**/bin/
+
+### NetBeans ###
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+### VS Code ###
+.vscode/
+
+### Mac OS ###
+.DS_Store

@@ -1,0 +1,284 @@
+<!-- Internal: CodeBridge's modules, in the same namespace, build on this one. -->
+<idea-plugin visibility="internal">
+    <dependencies>
+        <module name="intellij.platform.backend"/>
+        <module name="intellij.platform.kernel.backend"/>
+        <module name="intellij.platform.rpc.backend"/>
+        <module name="intellij.platform.project"/>
+        <module name="intellij.platform.dap"/>
+        <module name="intellij.platform.debugger"/>
+        <module name="intellij.platform.debugger.impl"/>
+        <!-- Declares the `formattingService` extension point; without it the formatter is ignored. -->
+        <module name="intellij.platform.codeStyle.impl"/>
+        <module name="CodeBridge.protocol"/>
+        <module name="CodeBridge.shared"/>
+
+    </dependencies>
+    <extensionPoints>
+        <!-- Extensions another plugin brings beside the user's own: CodeBridge Bundled Extensions's. -->
+        <extensionPoint qualifiedName="me.helvert.codebridge.extensionSource"
+                        interface="me.helvert.codebridge.extensions.ExtensionSource" dynamic="true"/>
+        <!-- What reads a file this plugin has taken the file type of. Implemented where the IDE has
+             the TextMate plugin, so a claimed file keeps the highlighting it already had. -->
+        <extensionPoint qualifiedName="me.helvert.codebridge.fileLanguage"
+                        interface="me.helvert.codebridge.language.CodeBridgeFileLanguageProvider" dynamic="true"/>
+        <!-- What makes the sticky lines pass and the breadcrumbs bar draw an outline they did not ask
+             for. Implemented in `CodeBridge.internal.backend`, since both take internal API. -->
+        <extensionPoint qualifiedName="me.helvert.codebridge.outlineRedrawer"
+                        interface="me.helvert.codebridge.language.CodeBridgeOutlineRedrawer" dynamic="true"/>
+        <!-- What restarts highlighting without the auto-reparse delay. Implemented in
+             `CodeBridge.internal.backend`, since it takes internal API. -->
+        <extensionPoint qualifiedName="me.helvert.codebridge.daemonRestarter"
+                        interface="me.helvert.codebridge.language.CodeBridgeDaemonRestarter" dynamic="true"/>
+    </extensionPoints>
+    <extensions defaultExtensionNs="com.intellij">
+        <platform.rpc.backend.remoteApiProvider implementation="me.helvert.codebridge.rpc.BackendRpcApiProvider"/>
+        <projectViewNodeDecorator implementation="me.helvert.codebridge.workbench.CodeBridgeDecorationsNodeDecorator"/>
+        <!-- The tree views extensions add to VS Code's Explorer, beside External Libraries. -->
+        <treeStructureProvider implementation="me.helvert.codebridge.workbench.ExplorerViewsStructure"/>
+        <!-- So Select Opened File can reach a library class only those views list. -->
+        <projectPaneSelectableFileContributor implementation="me.helvert.codebridge.workbench.ExplorerViewsSelectable"/>
+        <!-- Lets a completion inserted in this process ask for its command without the RPC. -->
+        <applicationService serviceInterface="me.helvert.codebridge.completion.CodeBridgeCompletionCommandRunner"
+                            serviceImplementation="me.helvert.codebridge.language.LocalCompletionCommandRunner"/>
+        <!-- Deletes the runtime earlier versions downloaded; it now ships inside the plugin. -->
+        <postStartupActivity implementation="me.helvert.codebridge.settings.LegacyRuntimeCleanup"/>
+        <!-- Icons extensions contribute (`contributes.icons`), for what this side draws: the Project view, debug tabs. -->
+        <postStartupActivity implementation="me.helvert.codebridge.workbench.BackendContributedIconsActivity"/>
+        <!-- The user settings file belongs to no project; opening it is already asking to edit it. -->
+        <nonProjectFileWritingAccessExtension implementation="me.helvert.codebridge.settings.CodeBridgeUserSettingsWritingAccess"/>
+        <!-- Restored tabs can open without a `fileOpened` event; their editors are still created. -->
+        <editorFactoryListener implementation="me.helvert.codebridge.language.CodeBridgeEditorCreatedListener"/>
+        <configurationType implementation="me.helvert.codebridge.launch.CodeBridgeDebugConfigurationType"/>
+        <!-- A compound starts its members' configurations; the DAP runner starts only one session. -->
+        <programRunner implementation="me.helvert.codebridge.launch.CodeBridgeCompoundRunner"/>
+        <!-- One kept as the extension command that started it runs that command again. -->
+        <programRunner implementation="me.helvert.codebridge.launch.CodeBridgeCommandRunner"/>
+        <!-- The DAP client finds its breakpoint types by class, so they must be registered to exist. -->
+        <!-- VS Code debuggers in Run | Attach to Process, from the attach configurations they declare. -->
+        <!-- launch.json's configurations and compounds as run configurations, kept as the file says. -->
+        <postStartupActivity implementation="me.helvert.codebridge.launch.CodeBridgeLaunchConfigurationsActivity"/>
+        <xdebugger.attachDebuggerProvider implementation="me.helvert.codebridge.launch.CodeBridgeAttachDebuggerProvider"/>
+        <xdebugger.breakpointType implementation="me.helvert.codebridge.launch.CodeBridgeLineBreakpointType"/>
+        <xdebugger.breakpointType implementation="me.helvert.codebridge.launch.CodeBridgeExceptionBreakpointType"/>
+        <!-- tasks.json's tasks as run configurations, kept as the file says; tasks extensions run, kept
+             as temporary configurations as a gutter icon's run is. -->
+        <configurationType implementation="me.helvert.codebridge.task.CodeBridgeTaskConfigurationType"/>
+        <postStartupActivity implementation="me.helvert.codebridge.task.CodeBridgeTaskConfigurationsActivity"/>
+        <postStartupActivity implementation="me.helvert.codebridge.language.HostedStartupExtensions"/>
+        <!-- Without a file type these files have no document or PSI, so nothing can annotate them,
+             and with the wrong one the editor calls a Rust file a TextMate file. An overrider is
+             consulted before both the TextMate plugin's claim and content detection. -->
+        <fileTypeOverrider implementation="me.helvert.codebridge.language.CodeBridgeLanguageFileTypeOverrider"/>
+        <!-- VS Code's file icons by file name, as VS Code draws them, for files the IDE has no type of its own for. -->
+        <fileIconProvider implementation="me.helvert.codebridge.language.CodeBridgeFileIconProvider"/>
+        <!-- Ordinary highlighting, so it reaches a split-mode frontend; IntelliJ's LSP client does not.
+             An empty `language`, not `TEXT`: the annotator EP resolves through `allForLanguageOrAny`,
+             and `Language.ANY` is keyed by the empty string, which is what `LanguageExtensionPoint`
+             falls back to. A file an extension claims does not always end up plain text. A TextMate
+             grammar gives it the `textmate` language, and an extension contributing `.json` or `.py`
+             leaves the file with the IDE's own language, where a `TEXT` registration is never asked.
+             `problemsFor` leaves early for the files (nearly all of them) that no extension has
+             reported anything about. A plain annotator, not an external one: the external pass waits
+             for every other pass and then a 300ms queue, which is what made problems appear late. -->
+        <annotator language="" implementationClass="me.helvert.codebridge.language.CodeBridgeDiagnosticsAnnotator"/>
+        <!-- Signature help as Parameter Info. Empty `language` for the annotator's reason; `ShowParameterInfoHandler`
+             asks a language's own handlers before `Language.ANY`'s, so the IDE's own Parameter Info keeps the
+             languages it has one for. The typed handler opens it on the extension's trigger characters. -->
+        <codeInsight.parameterInfo language="" implementationClass="me.helvert.codebridge.language.CodeBridgeSignatureHelpHandler"/>
+        <typedHandler implementation="me.helvert.codebridge.language.CodeBridgeSignatureHelpTypedHandler"/>
+        <!-- An extension's on-type formatter, with `editor.formatOnType` on. Last, as the platform's own
+             LSP client registers it: after the IDE's own handlers have done with the character. -->
+        <typedHandler order="last" implementation="me.helvert.codebridge.language.CodeBridgeOnTypeFormattingTypedHandler"/>
+        <enterHandlerDelegate order="last" implementation="me.helvert.codebridge.language.CodeBridgeOnTypeFormattingEnterHandler"/>
+        <!-- An extension's inline completions as ghost text. Backend only: a split-mode client asks the
+             backend's providers for its own. -->
+        <inline.completion.provider id="me.helvert.codebridge.language.CodeBridgeInlineCompletionProvider"
+                                    implementation="me.helvert.codebridge.language.CodeBridgeInlineCompletionProvider"/>
+        <!-- First: a split-mode client's Quick Documentation shows only the first target of all the
+             providers', and one registered ahead of this one otherwise answers "No documentation found". -->
+        <platform.backend.documentation.targetProvider implementation="me.helvert.codebridge.language.CodeBridgeHoverTargetProvider"
+                                                       order="first"/>
+        <!-- A completion's detail and documentation, resolved for the item the lookup has selected. -->
+        <platform.backend.documentation.lookupElementTargetProvider
+                implementation="me.helvert.codebridge.language.CodeBridgeCompletionDocumentation"/>
+        <!-- Clicking a hover's `command:` link runs the command, as it does in the workbench. -->
+        <!-- First: the links are `psi_element://`, which the platform's own handler also claims. -->
+        <platform.backend.documentation.linkHandler implementation="me.helvert.codebridge.language.CodeBridgeHoverLinkHandler"
+                                                    order="first"/>
+        <!-- An extension's document links, followed with Ctrl+click. Ahead of definitions: where both
+             answer, VS Code follows the link. -->
+        <psi.implicitReferenceProvider id="codeBridgeDocumentLinks" order="first"
+                                       implementation="me.helvert.codebridge.language.CodeBridgeDocumentLinkReferenceProvider"/>
+        <!-- Symbol references carry the source range, including for single-leaf TextMate PSI. -->
+        <psi.implicitReferenceProvider implementation="me.helvert.codebridge.language.CodeBridgeSymbolReferenceProvider"/>
+        <!-- Find Usages from a symbol the reference provider resolved, answered by `$provideReferences`. -->
+        <lang.symbolSearchTarget forClass="me.helvert.codebridge.language.CodeBridgeDefinitionSymbol"
+                                 implementationClass="me.helvert.codebridge.language.CodeBridgeSymbolSearchTargetFactory"/>
+        <searcher forClass="com.intellij.find.usages.api.UsageSearchParameters"
+                  implementationClass="me.helvert.codebridge.language.CodeBridgeReferenceSearcher"/>
+        <!-- Go To Type Declaration from a symbol the reference provider resolved, answered by `$provideTypeDefinition`. -->
+        <lang.symbolTypeProvider implementation="me.helvert.codebridge.language.CodeBridgeSymbolTypeProvider"/>
+        <!-- Go To Implementation, answered by `$provideImplementation`. The declaration searcher gives
+             the search something to start from, only while that action runs, which the listener tracks. -->
+        <pom.declarationSearcher implementation="me.helvert.codebridge.language.CodeBridgeImplementationDeclarationSearcher"/>
+        <definitionsScopedSearch implementation="me.helvert.codebridge.language.CodeBridgeImplementationSearch"/>
+        <!-- Call and type hierarchies, answered by `$prepareCallHierarchy` and `$prepareTypeHierarchy`.
+             For every language and last, as the platform's own LSP client registers them, so a
+             language the IDE knows keeps its own. -->
+        <callHierarchyProvider language="" order="last"
+                               implementationClass="me.helvert.codebridge.language.CodeBridgeCallHierarchyProvider"/>
+        <typeHierarchyProvider language="" order="last"
+                               implementationClass="me.helvert.codebridge.language.CodeBridgeTypeHierarchyProvider"/>
+        <!-- Rename, answered by `$provideRenameEdits` and applied as the extension's own workspace
+             edit. First, so that where the IDE also offers a rename the extension's is listed first. -->
+        <renamerFactory implementation="me.helvert.codebridge.language.CodeBridgeRenamerFactory" order="first"/>
+        <!-- Files and folders renamed or moved, for `onWillRenameFiles`: neither handles anything,
+             they note where each is going for CodeBridgeFileMoveListener. -->
+        <automaticRenamerFactory implementation="me.helvert.codebridge.language.CodeBridgeFileRenameNotes"/>
+        <moveFileHandler implementation="me.helvert.codebridge.language.CodeBridgeFileMoveNotes"/>
+        <highlightUsagesHandlerFactory implementation="me.helvert.codebridge.language.CodeBridgeHighlightUsagesHandlerFactory"/>
+        <!-- Extend Selection, answered by `$provideSelectionRanges` alongside the IDE's own ranges. -->
+        <extendWordSelectionHandler implementation="me.helvert.codebridge.language.CodeBridgeSelectionRangeHandler"/>
+        <!-- Go to Class and Go to Symbol, answered by `$provideWorkspaceSymbols`. -->
+        <gotoClassContributor implementation="me.helvert.codebridge.language.CodeBridgeWorkspaceClassContributor"/>
+        <gotoSymbolContributor implementation="me.helvert.codebridge.language.CodeBridgeWorkspaceSymbolsContributor"/>
+        <!-- An extension's code actions: a fixed set of slots, each taking the action at its index in
+             the answer for the caret, since intentions are registered by class and code actions only
+             exist once asked for. No category, so they are not listed as switchable intentions. -->
+        <intentionAction>
+            <className>me.helvert.codebridge.language.CodeBridgeCodeAction0</className>
+        </intentionAction>
+        <intentionAction>
+            <className>me.helvert.codebridge.language.CodeBridgeCodeAction1</className>
+        </intentionAction>
+        <intentionAction>
+            <className>me.helvert.codebridge.language.CodeBridgeCodeAction2</className>
+        </intentionAction>
+        <intentionAction>
+            <className>me.helvert.codebridge.language.CodeBridgeCodeAction3</className>
+        </intentionAction>
+        <intentionAction>
+            <className>me.helvert.codebridge.language.CodeBridgeCodeAction4</className>
+        </intentionAction>
+        <intentionAction>
+            <className>me.helvert.codebridge.language.CodeBridgeCodeAction5</className>
+        </intentionAction>
+        <intentionAction>
+            <className>me.helvert.codebridge.language.CodeBridgeCodeAction6</className>
+        </intentionAction>
+        <intentionAction>
+            <className>me.helvert.codebridge.language.CodeBridgeCodeAction7</className>
+        </intentionAction>
+        <intentionAction>
+            <className>me.helvert.codebridge.language.CodeBridgeCodeAction8</className>
+        </intentionAction>
+        <intentionAction>
+            <className>me.helvert.codebridge.language.CodeBridgeCodeAction9</className>
+        </intentionAction>
+        <intentionAction>
+            <className>me.helvert.codebridge.language.CodeBridgeCodeAction10</className>
+        </intentionAction>
+        <intentionAction>
+            <className>me.helvert.codebridge.language.CodeBridgeCodeAction11</className>
+        </intentionAction>
+        <intentionAction>
+            <className>me.helvert.codebridge.language.CodeBridgeCodeAction12</className>
+        </intentionAction>
+        <intentionAction>
+            <className>me.helvert.codebridge.language.CodeBridgeCodeAction13</className>
+        </intentionAction>
+        <intentionAction>
+            <className>me.helvert.codebridge.language.CodeBridgeCodeAction14</className>
+        </intentionAction>
+        <intentionAction>
+            <className>me.helvert.codebridge.language.CodeBridgeCodeAction15</className>
+        </intentionAction>
+        <intentionAction>
+            <className>me.helvert.codebridge.language.CodeBridgeCodeAction16</className>
+        </intentionAction>
+        <intentionAction>
+            <className>me.helvert.codebridge.language.CodeBridgeCodeAction17</className>
+        </intentionAction>
+        <intentionAction>
+            <className>me.helvert.codebridge.language.CodeBridgeCodeAction18</className>
+        </intentionAction>
+        <intentionAction>
+            <className>me.helvert.codebridge.language.CodeBridgeCodeAction19</className>
+        </intentionAction>
+        <!-- An extension's inlay hints. A factory rather than a provider, because providers are
+             registered per language and a claimed file can have any language. -->
+        <codeInsight.declarativeInlayProviderFactory
+                implementation="me.helvert.codebridge.language.CodeBridgeInlayHintsProviderFactory"/>
+        <!-- Ctrl+clicking a piece of a hint; the id must match CodeBridgeInlayHintClickHandler.ID. -->
+        <codeInsight.inlayActionHandler handlerId="codebridge.inlay.click"
+                                        implementationClass="me.helvert.codebridge.language.CodeBridgeInlayHintClickHandler"/>
+        <!-- An extension's code lenses, as code vision: a lens is clicked without Ctrl, which an
+             inlay's handler never hears. A slot per lens on a line, since split mode draws one entry
+             per provider per line; the group provider lists them in the settings as one. -->
+        <codeInsight.codeVisionProvider implementation="me.helvert.codebridge.language.CodeBridgeCodeLens0"/>
+        <codeInsight.codeVisionProvider implementation="me.helvert.codebridge.language.CodeBridgeCodeLens1"/>
+        <codeInsight.codeVisionProvider implementation="me.helvert.codebridge.language.CodeBridgeCodeLens2"/>
+        <codeInsight.codeVisionProvider implementation="me.helvert.codebridge.language.CodeBridgeCodeLens3"/>
+        <codeInsight.codeVisionProvider implementation="me.helvert.codebridge.language.CodeBridgeCodeLens4"/>
+        <codeInsight.codeVisionProvider implementation="me.helvert.codebridge.language.CodeBridgeCodeLens5"/>
+        <codeInsight.codeVisionProvider implementation="me.helvert.codebridge.language.CodeBridgeCodeLens6"/>
+        <codeInsight.codeVisionProvider implementation="me.helvert.codebridge.language.CodeBridgeCodeLens7"/>
+        <config.codeVisionGroupSettingProvider implementation="me.helvert.codebridge.language.CodeBridgeCodeLensSettingProvider"/>
+        <!-- Every language, as IntelliJ's own LSP client registers its folding: the builder answers only
+             for files whose language folds nothing itself. -->
+        <lang.foldingBuilder language="" implementationClass="me.helvert.codebridge.language.CodeBridgeFoldingBuilder"/>
+        <!-- No key: asked for any file type once nothing for the type itself answers. -->
+        <structureViewBuilder factoryClass="me.helvert.codebridge.language.CodeBridgeStructureViewBuilderProvider"/>
+        <!-- Reformat Code, for files an extension's formatter claims by its document selector. -->
+        <formattingService implementation="me.helvert.codebridge.language.CodeBridgeFormattingService"/>
+        <!-- The formatting service names this in its timeout notification. The frontend's own group
+             is not loaded in a split backend, hence a group of its own here. -->
+        <notificationGroup id="CodeBridge formatting" displayType="BALLOON"/>
+        <!-- A run configuration's form that launch.json refused to take. -->
+        <notificationGroup id="CodeBridge launch.json" displayType="BALLOON"/>
+        <!-- Also ordinary backend-computed completion, for the same split-mode reason. -->
+        <completion.contributor language="TEXT" implementationClass="me.helvert.codebridge.language.CodeBridgeCompletionContributor"/>
+        <!-- Where a language server's own log lands; the id must match HostedOutputChannels.TOOL_WINDOW_ID. -->
+        <toolWindow id="CodeBridge Output" anchor="bottom" canCloseContents="false"
+                    icon="AllIcons.Toolwindows.ToolWindowMessages"
+                    factoryClass="me.helvert.codebridge.workbench.CodeBridgeOutputToolWindowFactory"/>
+    </extensions>
+    <applicationListeners>
+        <!-- Which action runs, so Go To Implementation alone finds a symbol declared at the caret. -->
+        <listener class="me.helvert.codebridge.language.CodeBridgeCurrentActionListener"
+                  topic="com.intellij.openapi.actionSystem.ex.AnActionListener"/>
+        <!-- Files the user creates, copies and deletes, for `onWillCreateFiles` and `onWillDeleteFiles`:
+             which Delete is about to delete, the commands they happen in, and what each command did. -->
+        <listener class="me.helvert.codebridge.language.CodeBridgeDeleteActionListener"
+                  topic="com.intellij.openapi.actionSystem.ex.AnActionListener"/>
+        <listener class="me.helvert.codebridge.language.CodeBridgeFileCommandListener"
+                  topic="com.intellij.openapi.command.CommandListener"/>
+        <listener class="me.helvert.codebridge.language.CodeBridgeFileOperationsListener"
+                  topic="com.intellij.openapi.vfs.newvfs.BulkFileListener"/>
+    </applicationListeners>
+    <projectListeners>
+        <!-- Replaces LspServerSupportProvider as the trigger, without depending on the LSP module. -->
+        <listener class="me.helvert.codebridge.language.CodeBridgeFileOpenListener"
+                  topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
+        <!-- Asks the extensions what a file rename or move changes, and tells them it happened. -->
+        <listener class="me.helvert.codebridge.language.CodeBridgeFileMoveListener"
+                  topic="com.intellij.refactoring.listeners.RefactoringEventListener"/>
+        <!-- Gives extensions the problems IntelliJ itself found, for languages.getDiagnostics. -->
+        <listener class="me.helvert.codebridge.language.CodeBridgeIdeProblemsListener"
+                  topic="com.intellij.codeInsight.daemon.DaemonCodeAnalyzer$DaemonListener"/>
+    </projectListeners>
+    <extensions defaultExtensionNs="com.intellij.platform.dap">
+        <launchArgumentsProvider implementation="me.helvert.codebridge.launch.LaunchJsonDapArgumentsProvider"/>
+        <debugAdapterSupportProvider implementation="me.helvert.codebridge.launch.LaunchJsonDebugAdapterSupportProvider"/>
+    </extensions>
+    <actions>
+        <group id="CodeBridge.ExplorerViewsMenu" class="me.helvert.codebridge.workbench.ExplorerViewsMenu">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="first"/>
+        </group>
+        <!-- VS Code's command of the same name, for after "Do not ask me again" on a file operation's edits. -->
+        <action id="CodeBridge.ResetFileMoveChoice" class="me.helvert.codebridge.language.CodeBridgeResetFileOperationChoiceAction"
+                text="Reset Choice for 'File Operation Needs Preview'"
+                description="Ask again how to apply the edits extensions make when files are created, deleted, renamed or moved"/>
+    </actions>
+</idea-plugin>

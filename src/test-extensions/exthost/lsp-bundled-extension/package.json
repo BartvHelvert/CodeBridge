@@ -1,0 +1,30 @@
+{
+  "name": "lsp-bundled-probe",
+  "publisher": "codebridge",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "main": "./dist/extension.js",
+  "activationEvents": [
+    "onLanguage:codebridgebundled"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "codebridgebundled",
+        "extensions": [
+          ".codebridgebundled"
+        ]
+      }
+    ]
+  },
+  "scripts": {
+    "build": "esbuild src/extension.js --bundle --platform=node --target=node18 --format=cjs --external:vscode --outfile=dist/extension.js"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10",
+    "vscode-languageclient": "9.0.1"
+  },
+  "private": true
+}

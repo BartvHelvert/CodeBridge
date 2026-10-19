@@ -1,0 +1,9 @@
+Codicons, the icons of Visual Studio Code, from the npm package @vscode/codicons 0.0.46-24
+(https://github.com/microsoft/vscode-codicons), Copyright (c) Microsoft Corporation.
+
+Licensed under the Creative Commons Attribution 4.0 International licence (CC BY 4.0):
+https://creativecommons.org/licenses/by/4.0/legalcode
+
+Changes: each icon in `src/icons/` is written out twice, with its `currentColor` fill replaced by the
+IDE's icon colour for light themes (`<name>.svg`, #6C707E) and dark themes (`<name>_dark.svg`, #CED0D6).
+`aliases.properties` is derived from the package's `src/template/mapping.json`.

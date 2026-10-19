@@ -1,0 +1,12 @@
+<!-- A plugin that is a VS Code extension and nothing else: what a vendor would publish to the
+     JetBrains Marketplace. No classes, only the extension and this descriptor. -->
+<idea-plugin>
+    <id>me.helvert.codebridge.bundlingprobe</id>
+    <name>LSP Bundled Probe</name>
+    <vendor>CodeBridge tests</vendor>
+    <description>The LSP bundled probe extension, shipped as a plugin of its own.</description>
+    <depends>me.helvert.codebridge.bundled</depends>
+    <extensions defaultExtensionNs="me.helvert.codebridge">
+        <bundledExtension path="extension"/>
+    </extensions>
+</idea-plugin>

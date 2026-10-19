@@ -1,0 +1,72 @@
+name: Bug report
+description: Something CodeBridge does wrong, or an extension that doesn't work as it does in VS Code.
+labels: [ bug ]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check [Status](https://github.com/BartvHelvert/CodeBridge/blob/master/docs/status.md) first:
+        some of the VS Code API isn't supported yet. Report security problems privately, as
+        described in [SECURITY.md](https://github.com/BartvHelvert/CodeBridge/blob/master/SECURITY.md).
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: A small project or a few lines of code that show the problem help most.
+      placeholder: |
+        1. Install extension …
+        2. Open a file …
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: extension
+    attributes:
+      label: Extension
+      description: The extension's ID and version, if one is involved.
+      placeholder: rust-lang.rust-analyzer 0.3.2600
+  - type: input
+    id: ide
+    attributes:
+      label: IDE
+      description: From **Help → About**.
+      placeholder: IntelliJ IDEA 2026.3 EAP (IU-263.7307.44)
+    validations:
+      required: true
+  - type: input
+    id: codebridge
+    attributes:
+      label: CodeBridge commit
+      description: The commit you built the plugin from.
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system
+      options: [ Windows, macOS, Linux ]
+    validations:
+      required: true
+  - type: dropdown
+    id: mode
+    attributes:
+      label: IDE mode
+      description: Split mode is remote development, where the IDE's UI and backend are separate processes.
+      options: [ Single process, Split mode (remote development) ]
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: |
+        Relevant lines from `idea.log` (**Help → Show Log in …**; in split mode, the backend's) and
+        the **CodeBridge Output** tool window.
+      render: text

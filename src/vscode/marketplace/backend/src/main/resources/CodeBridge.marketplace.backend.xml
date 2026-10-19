@@ -1,0 +1,12 @@
+<idea-plugin>
+    <dependencies>
+        <module name="intellij.platform.backend"/>
+        <module name="intellij.platform.rpc.backend"/>
+        <module name="CodeBridge.backend" namespace="codebridge"/>
+        <module name="CodeBridge.shared" namespace="codebridge"/>
+        <module name="CodeBridge.marketplace.shared"/>
+    </dependencies>
+    <extensions defaultExtensionNs="com.intellij">
+        <platform.rpc.backend.remoteApiProvider implementation="me.helvert.codebridge.rpc.MarketplaceRpcApiProvider"/>
+    </extensions>
+</idea-plugin>

@@ -1,0 +1,31 @@
+<idea-plugin>
+    <dependencies>
+        <!-- Backend-only in its own right, not just through `CodeBridge.backend`. -->
+        <module name="intellij.platform.backend"/>
+        <module name="CodeBridge.backend" namespace="codebridge"/>
+        <module name="CodeBridge.shared" namespace="codebridge"/>
+        <plugin id="com.intellij.modules.json"/>
+        <!-- `JsonSchemaProviderFactory` and the schema service: the JSON plugin's backend half. -->
+        <module name="intellij.json.backend"/>
+        <!-- JSON PSI, which the launch.json completion filter reads its entry from. -->
+        <module name="intellij.json"/>
+    </dependencies>
+    <extensions defaultExtensionNs="JavaScript">
+        <!-- launch.json and settings.json as VS Code types them, from the installed extensions. -->
+        <JsonSchema.ProviderFactory implementation="me.helvert.codebridge.json.CodeBridgeJsonSchemaProviderFactory"/>
+    </extensions>
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- VS Code reads its own files as JSON with comments, and writes comments into them. -->
+        <json.jsonStandardComplianceProvider implementation="me.helvert.codebridge.json.CodeBridgeJsoncCompliance"/>
+        <!-- Debuggers' snippets as new launch.json entries, and an entry's properties narrowed to its shape.
+             First, so it sees the schema completion's results before they are shown. -->
+        <completion.contributor language="JSON" order="first" implementationClass="me.helvert.codebridge.json.CodeBridgeLaunchCompletion"/>
+        <!-- `${workspaceFolder}` and the rest in launch.json and tasks.json. First, so the property's own values stay out. -->
+        <completion.contributor language="JSON" order="first" implementationClass="me.helvert.codebridge.json.CodeBridgeVariableCompletion"/>
+        <typedHandler implementation="me.helvert.codebridge.json.CodeBridgeVariableCompletion$AutoPopup"/>
+    </extensions>
+    <applicationListeners>
+        <listener class="me.helvert.codebridge.json.CodeBridgeJsonSchemaInstallationListener"
+                  topic="me.helvert.codebridge.extensions.ExtensionInstallationListener"/>
+    </applicationListeners>
+</idea-plugin>

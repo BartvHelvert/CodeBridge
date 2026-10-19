@@ -1,0 +1,58 @@
+<idea-plugin>
+    <id>me.helvert.codebridge</id>
+    <name>CodeBridge</name>
+    <vendor email="bartvanhelvert1@gmail.com">Bart van Helvert</vendor>
+    <!-- The extension host and everything that draws what extensions do; this plugin adds the
+         marketplace, VS Code's workspace files and their JSON schemas on top. -->
+    <depends>me.helvert.codebridge.runtime</depends>
+    <description><![CDATA[
+        <p>
+        Use VS Code extensions in IntelliJ-based IDEs. Browse and install them from
+        <a href="https://open-vsx.org">Open VSX</a> on a <b>VS Code Extensions</b> page in Settings,
+        or install a <code>.vsix</code> file. Your project's <code>.vscode</code> folder works too:
+        <code>launch.json</code> entries become run configurations, <code>tasks.json</code> tasks can
+        run before them, and extensions use the settings in <code>settings.json</code>.
+        </p>
+        <p>
+        Extensions run unmodified in the real VS Code extension host, which comes with the plugin.
+        You don't need VS Code or Node.js installed. What extensions provide shows up as ordinary
+        IntelliJ features.
+        </p>
+        <ul>
+          <li><b>Extensions:</b> search Open VSX, see details, and install, update, turn off or uninstall extensions.</li>
+          <li><b>Editing:</b> errors and warnings, semantic colouring, syntax highlighting, hover docs, completion,
+              signature help, inlay hints, code lenses, folding, Extend Selection and document links.</li>
+          <li><b>Navigation:</b> Go to Declaration, Find Usages, usage highlighting, Go to Class/Symbol,
+              the Structure view and breadcrumbs.</li>
+          <li><b>Refactoring:</b> Rename, quick fixes and refactorings as intentions, and Reformat Code
+              with the extension's formatter.</li>
+          <li><b>Debugging:</b> debug with an extension's debugger in IntelliJ's debugger, using your <code>launch.json</code>.</li>
+          <li><b>Workspace:</b> <code>launch.json</code>, <code>tasks.json</code> and <code>settings.json</code>,
+              including multi-root <code>.code-workspace</code> files.</li>
+          <li><b>Extension UI:</b> extension views as tool windows, webviews, status bar items, notifications,
+              quick picks, progress, terminals and test runners.</li>
+        </ul>
+        <p>
+        Remote development (split mode) is supported: the UI stays on your machine and extensions run
+        where the project lives.
+        </p>
+        <p>
+        CodeBridge is in active development. Many extensions work well, but some of what VS Code offers
+        extensions is not available, so not every feature of an extension will work. Notebooks, source
+        control, comments, custom editors and extensions' chat and AI features are not supported.
+        Windows on ARM is not supported.
+        </p>
+    ]]></description>
+
+    <!-- The runtime's namespace, so these modules may depend on the runtime's that it lets in. -->
+    <content namespace="codebridge">
+        <module name="CodeBridge.json.backend"/>
+        <module name="CodeBridge.marketplace.shared"/>
+        <module name="CodeBridge.marketplace.backend"/>
+        <module name="CodeBridge.marketplace.frontend"/>
+        <module name="CodeBridge.workspace.shared"/>
+        <module name="CodeBridge.workspace.backend"/>
+        <module name="CodeBridge.workspace.frontend"/>
+        <module name="CodeBridge.jsonfiles"/>
+    </content>
+</idea-plugin>

@@ -1,0 +1,303 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+# A newer push to the same branch makes the older run's result moot.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+# Git Bash on Windows, so every step reads the same on both.
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ ubuntu-24.04, windows-2025, macos-15 ]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    env:
+      # Unpacks the pinned extension host, so the tests that start one run instead of skipping.
+      CODEBRIDGE_TEST_LSP_HOST: "1"
+    steps:
+      - uses: actions/checkout@v5
+
+      # The IntelliJ Platform Gradle plugin unpacks the IDE the build is pinned to into
+      # `.intellijPlatform/ides` while Gradle configures the build: 4.6 GB, in the checkout rather
+      # than the Gradle home the Gradle action caches, so every job spent minutes on it before its
+      # first task. Kept between runs here, keyed on the pinned build alone.
+      - name: Read the pinned IDE build
+        id: ide
+        run: echo "build=$(sed -n 's/^idea = "\([^"]*\)".*/\1/p' gradle/libs.versions.toml)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the unpacked IDE
+        uses: actions/cache@v4
+        with:
+          path: .intellijPlatform/ides
+          key: intellij-ide-${{ runner.os }}-${{ runner.arch }}-${{ steps.ide.outputs.build }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      # Windows spends most of its extra time on file I/O: the Gradle home moves to a trusted Dev
+      # Drive (ReFS, Defender in performance mode), and Defender skips the workspace's build output.
+      - name: Set up Dev Drive
+        if: runner.os == 'Windows'
+        uses: samypr100/setup-dev-drive@v4
+        with:
+          drive-size: 20GB
+          trusted-dev-drive: true
+          env-mapping: |
+            GRADLE_USER_HOME,{{ DEV_DRIVE }}/.gradle
+
+      # The temporary directory too, where the test fixtures write their projects: a scan holding a
+      # file just written there failed a test writing it again ("being used by another process").
+      - name: Exclude workspace from Defender
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:GRADLE_USER_HOME, $env:TEMP
+
+      - uses: gradle/actions/setup-gradle@v5
+
+      # `freshTest` rather than `test`: a restored build cache can serve test classes compiled
+      # against an older `main`, which pass or fail for the wrong reasons.
+      - name: Run tests
+        run: ./gradlew freshTest --console=plain --continue
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v5
+        with:
+          name: test-reports-${{ matrix.os }}
+          # The test IDEs' own logs too: an icon that fails to load is only logged, not thrown.
+          path: |
+            src/**/build/reports/tests/
+            src/**/build/test-results/
+            .intellijPlatform/sandbox/*/*/log-test/
+          include-hidden-files: true
+          retention-days: 14
+
+  # What the tests never look at: the descriptors only fail when an IDE loads them, and the
+  # distributions are only assembled here.
+  plugin:
+    name: Build and verify plugins
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      # The three plugins' builds and the Plugin Verifier's IDE downloads outgrow the runner's free
+      # disk -- the runner itself died writing its log -- and the preinstalled SDKs are never used.
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      - uses: actions/checkout@v5
+
+      # As in the `test` job.
+      - name: Read the pinned IDE build
+        id: ide
+        run: echo "build=$(sed -n 's/^idea = "\([^"]*\)".*/\1/p' gradle/libs.versions.toml)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the unpacked IDE
+        uses: actions/cache@v4
+        with:
+          path: .intellijPlatform/ides
+          key: intellij-ide-${{ runner.os }}-${{ runner.arch }}-${{ steps.ide.outputs.build }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      # The repository's 10 GB of Actions cache only fits the `test` jobs' Gradle homes; jobs that
+      # also wrote theirs evicted those, and every job downloaded its dependencies again.
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: true
+
+      - name: Build plugins
+        run: ./gradlew buildPlugin :runtime:buildPlugin :bundled:buildPlugin --console=plain
+
+      # `verifyPluginStructure` checks the descriptors; `verifyPlugin` runs the Plugin Verifier
+      # against the platform the plugins are built with. One plugin at a time: two verifications in
+      # one build have failed to read the jars the other one was extracting.
+      - name: Verify CodeBridge Runtime
+        run: ./gradlew :runtime:verifyPluginStructure :runtime:verifyPlugin --console=plain
+
+      - name: Verify CodeBridge Bundled Extensions
+        run: ./gradlew :bundled:verifyPluginStructure :bundled:verifyPlugin --console=plain
+
+      - name: Verify CodeBridge
+        run: ./gradlew :verifyPluginStructure :verifyPlugin --console=plain
+
+      - name: Upload Plugin Verifier report
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: plugin-verifier-report
+          path: |
+            build/reports/pluginVerifier/
+            src/runtime/plugin/build/reports/pluginVerifier/
+            src/bundled/plugin/build/reports/pluginVerifier/
+          retention-days: 14
+
+  ui-test:
+    name: Split-mode UI tests (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+    runs-on: ${{ matrix.os }}
+    # Each test starts a backend and a client, a few minutes apiece on a two-core runner.
+    timeout-minutes: 120
+    steps:
+      # The build's IDE, Starter's backend and client, and the extension host together outgrow the
+      # Linux runner's free disk; the preinstalled SDKs below are never used here.
+      - name: Free disk space
+        if: runner.os == 'Linux'
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
+      # Windows runners have a desktop session; Linux gets a virtual display, and the
+      # native libraries the IDEs and their browser load.
+      - name: Install display and IDE libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb xauth libnss3 libgbm1 libgtk-3-0t64 libasound2t64 libxtst6 libxss1 \
+            libxkbcommon0 libxrandr2 libxcomposite1 libxdamage1 libdrm2 fonts-dejavu-core
+
+      # The client's embedded browser runs Chromium in its sandbox, which needs unprivileged user
+      # namespaces; Ubuntu 24.04 has AppArmor refuse them, and the client then shows "Embedded
+      # Browser is suspended" where every webview should be.
+      - name: Allow the browser sandbox
+        if: runner.os == 'Linux'
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - uses: actions/checkout@v5
+
+      # As in the `test` job.
+      - name: Read the pinned IDE build
+        id: ide
+        run: echo "build=$(sed -n 's/^idea = "\([^"]*\)".*/\1/p' gradle/libs.versions.toml)" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the unpacked IDE
+        uses: actions/cache@v4
+        with:
+          path: .intellijPlatform/ides
+          key: intellij-ide-${{ runner.os }}-${{ runner.arch }}-${{ steps.ide.outputs.build }}
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+
+      # As in the `test` job.
+      - name: Set up Dev Drive
+        if: runner.os == 'Windows'
+        uses: samypr100/setup-dev-drive@v4
+        with:
+          drive-size: 20GB
+          trusted-dev-drive: true
+          env-mapping: |
+            GRADLE_USER_HOME,{{ DEV_DRIVE }}/.gradle
+
+      - name: Exclude workspace from Defender
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:GRADLE_USER_HOME, $env:TEMP
+
+      # The Windows runner's screen is 1024x768, where the client's toolbar shortens the project's
+      # name, and the driver, looking for the name whole, waited for a frame that was long ready.
+      - name: Enlarge the screen
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Set-DisplayResolution -Width 1920 -Height 1080 -Force
+
+      # Read-only, as in the `plugin` job: it restores the `test` job's Gradle home of its OS.
+      - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: true
+
+      # Starter's downloaded backend and client. The IDE build is pinned in build.gradle.kts, so a
+      # change there is what invalidates them.
+      - name: Cache Starter downloads
+        uses: actions/cache@v4
+        with:
+          path: out/ide-tests/cache
+          key: starter-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.gradle.kts', 'gradle/libs.versions.toml') }}
+
+      # Short of the job's own limit, so the steps below still have time to stop the IDEs and upload
+      # what they wrote: a job that runs out of time has its uploads cut off too.
+      #
+      # Free disk and memory are logged once a minute: twice the Linux runner died mid-run, once
+      # writing its own log to a full disk and once with only a shutdown signal, and neither left
+      # anything behind that said which ran out.
+      - name: Run UI tests
+        timeout-minutes: 100
+        run: |
+          mkdir -p out
+          while true; do
+            { date -u +%T; df -h . | tail -n 1; [ "$RUNNER_OS" = Linux ] && free -m | sed -n 2p; } >> out/resource-usage.log 2>&1
+            sleep 60
+          done > /dev/null 2>&1 &
+          trap "kill $!" EXIT
+          if [ "$RUNNER_OS" = Linux ]; then
+            xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
+              ./gradlew :ui-test:test -PsearchableOptions=false --console=plain
+          else
+            ./gradlew :ui-test:test -PsearchableOptions=false --console=plain
+          fi
+
+      # A test stopped by a timeout leaves its IDEs running, and on Windows their locked files make
+      # the uploads below fail outright. Anything started from Starter's IDE cache is one of them.
+      - name: Stop leftover IDEs
+        if: always()
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then
+            powershell -NoProfile -Command "Get-Process | Where-Object { \$_.Path -like '*\out\ide-tests\*' } | Stop-Process -Force -ErrorAction SilentlyContinue"
+          else
+            pkill -9 -f "$GITHUB_WORKSPACE/out/ide-tests/" || true
+          fi
+
+      - name: Upload UI test reports
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: ui-test-reports-${{ matrix.os }}
+          path: |
+            src/ui-test/build/reports/tests/
+            src/ui-test/build/test-results/
+          retention-days: 14
+
+      # Each test run's own directory: the IDEs' logs, thread dumps and Starter's failure screenshots,
+      # also when the job ran out of time. Not the rest of a test's home, its `system` directories:
+      # gigabytes of indexes and models, and on Windows files a running IDE still holds. No `**` above
+      # the run directories, which would make the upload walk into those -- an exclusion only applies
+      # after the walk, and stat on a held `.port` failed the whole upload.
+      - name: Upload IDE logs
+        if: failure() || cancelled()
+        uses: actions/upload-artifact@v5
+        with:
+          name: ui-test-ide-logs-${{ matrix.os }}
+          path: |
+            out/ide-tests/tests/*/*/*-test/
+            !out/ide-tests/tests/**/heap-dump/
+            out/resource-usage.log
+          retention-days: 7

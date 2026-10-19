@@ -1,0 +1,112 @@
+{
+  "allVersions": {
+    "latest": "https://open-vsx.org/api/vadimcn/vscode-lldb/latest",
+    "1.12.3": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.12.3",
+    "1.12.2": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.12.2",
+    "1.12.1": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.12.1",
+    "1.12.0": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.12.0",
+    "1.11.8": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.11.8",
+    "1.11.7": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.11.7",
+    "1.11.6": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.11.6",
+    "1.11.5": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.11.5",
+    "1.11.4": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.11.4",
+    "1.11.3": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.11.3",
+    "1.11.2": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.11.2",
+    "1.11.1": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.11.1",
+    "1.11.0": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.11.0",
+    "1.10.0": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.10.0",
+    "1.9.2": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.9.2",
+    "1.9.1": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.9.1",
+    "1.9.0": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.9.0",
+    "1.8.1": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.8.1",
+    "1.8.0": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.8.0",
+    "1.7.4": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.7.4",
+    "1.7.3": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.7.3",
+    "1.7.2": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.7.2",
+    "1.7.1": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.7.1",
+    "1.7.0": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.7.0",
+    "1.6.10": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.6.10",
+    "1.6.9": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.6.9",
+    "1.6.8": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.6.8",
+    "1.6.7": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.6.7",
+    "1.6.6": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.6.6",
+    "1.6.5": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.6.5",
+    "1.6.4": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.6.4",
+    "1.6.0": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.6.0"
+  },
+  "allVersionsUrl": "https://open-vsx.org/api/vadimcn/vscode-lldb/versions",
+  "averageRating": 5.0,
+  "bugs": "https://github.com/vadimcn/codelldb/issues",
+  "bundledExtensions": [],
+  "categories": [
+    "Debuggers"
+  ],
+  "dependencies": [],
+  "deprecated": false,
+  "description": "Debugger for native code, powered by LLDB. Debug C++, Rust, and other compiled languages.",
+  "displayName": "CodeLLDB",
+  "downloadCount": 1271340,
+  "downloadable": true,
+  "downloads": {
+    "universal": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.12.3/file/vadimcn.vscode-lldb-1.12.3.vsix"
+  },
+  "engines": {
+    "vscode": "^1.61.0"
+  },
+  "extensionKind": [
+    "workspace"
+  ],
+  "files": {
+    "download": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.12.3/file/vadimcn.vscode-lldb-1.12.3.vsix",
+    "signature": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.12.3/file/vadimcn.vscode-lldb-1.12.3.sigzip",
+    "manifest": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.12.3/file/package.json",
+    "readme": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.12.3/file/readme.md",
+    "changelog": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.12.3/file/changelog.md",
+    "icon": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.12.3/file/lldb.png",
+    "vsixmanifest": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.12.3/file/extension.vsixmanifest",
+    "sha256": "https://open-vsx.org/api/vadimcn/vscode-lldb/1.12.3/file/vadimcn.vscode-lldb-1.12.3.sha256",
+    "publicKey": "https://open-vsx.org/api/-/public-key/14ccb407-4e79-41ed-be5a-6d608325c45a"
+  },
+  "galleryColor": "",
+  "galleryTheme": "",
+  "homepage": "https://github.com/vadimcn/codelldb#readme",
+  "license": "MIT",
+  "localizedLanguages": [],
+  "name": "vscode-lldb",
+  "namespace": "vadimcn",
+  "namespaceDisplayName": "vadimcn",
+  "namespaceUrl": "https://open-vsx.org/api/vadimcn",
+  "preRelease": false,
+  "preview": false,
+  "publishedBy": {
+    "avatarUrl": "https://avatars.githubusercontent.com/u/3203809?v=4",
+    "homepage": "https://github.com/vadimcn",
+    "loginName": "vadimcn",
+    "provider": "github"
+  },
+  "qna": "https://github.com/vadimcn/codelldb/discussions",
+  "repository": "https://github.com/vadimcn/codelldb.git",
+  "reviewCount": 3,
+  "reviewsUrl": "https://open-vsx.org/api/vadimcn/vscode-lldb/reviews",
+  "sponsorLink": "",
+  "tags": [
+    "__ext_disasm",
+    "C++",
+    "Debugger",
+    "debuggers",
+    "Disassembly",
+    "Embedded",
+    "language-model-tools",
+    "lldb.disassembly",
+    "Reverse",
+    "Rust",
+    "tools"
+  ],
+  "targetPlatform": "universal",
+  "timestamp": "2026-08-23T23:44:40.142241Z",
+  "verified": true,
+  "version": "1.12.3",
+  "versionAlias": [
+    "latest"
+  ]
+}

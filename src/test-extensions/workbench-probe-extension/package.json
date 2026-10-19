@@ -1,0 +1,97 @@
+{
+  "name": "workbench-probe",
+  "publisher": "codebridge",
+  "version": "1.0.0",
+  "displayName": "CodeBridge Workbench Probe",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "codebridgeactions",
+        "extensions": [
+          ".codebridgeactions"
+        ]
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "codebridge-ui-probe",
+        "label": "UI probe debugger",
+        "languages": [
+          "codebridgeactions"
+        ],
+        "configurationAttributes": {
+          "launch": {
+            "required": [
+              "program"
+            ],
+            "properties": {
+              "program": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "probeUI",
+          "title": "Probe UI",
+          "icon": "$(beaker)"
+        },
+        {
+          "id": "probeWebview",
+          "title": "Probe Webview",
+          "icon": "$(globe)"
+        }
+      ]
+    },
+    "views": {
+      "probeUI": [
+        {
+          "id": "probe.tree",
+          "name": "Probe tree"
+        }
+      ],
+      "probeWebview": [
+        {
+          "type": "webview",
+          "id": "probe.webviewView",
+          "name": "Probe webview view"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "probe.refreshTree",
+          "when": "view == probe.tree",
+          "group": "navigation"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "probe.refreshTree",
+        "title": "Refresh probe tree",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "probe.decorate",
+        "title": "Probe: Decorate"
+      },
+      {
+        "command": "probe.diff",
+        "title": "Probe: Diff"
+      }
+    ]
+  }
+}

@@ -1,0 +1,21 @@
+[versions]
+# 2026.3 EAP, pinned to a build number rather than "2026.3": the release feed lists several builds
+# under that name, and the one picked would change under us. Every plugin builds against it, and the
+# UI tests launch it.
+idea = "263.7307.44"
+kotlin-serialization = "1.11.0"
+junit4 = "4.13.2"
+junit = "6.1.3"
+markdown = "0.7.18"
+brotli = "0.1.2"
+
+[libraries]
+kotlin-serialization-json-jvm = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm", version.ref = "kotlin-serialization" }
+markdown = { module = "org.jetbrains:markdown-jvm", version.ref = "markdown" }
+brotli-dec = { module = "org.brotli:dec", version.ref = "brotli" }
+# The platform's test framework is built on JUnit 3 (`UsefulTestCase` is a `junit.framework.TestCase`),
+# so even its JUnit 5 fixtures need junit4 on the classpath.
+junit4 = { module = "junit:junit", version.ref = "junit4" }
+# The platform's JUnit 5 fixtures are built against JUnit 6 from 2026.3 (`Store.computeIfAbsent` with
+# a type), and do not say so in their POM: every module's tests take their JUnit from this.
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }

@@ -1,0 +1,34 @@
+<idea-plugin>
+    <id>me.helvert.codebridge.runtime</id>
+    <name>CodeBridge Runtime</name>
+    <vendor email="bartvanhelvert1@gmail.com">Bart van Helvert</vendor>
+    <description><![CDATA[
+        <p>
+        Runs VS Code extensions as ordinary IntelliJ features, in the real VS Code extension host,
+        which comes with the plugin. You don't need VS Code or Node.js installed.
+        </p>
+        <p>
+        On its own it runs only the extensions other plugins bundle: install a plugin made from a
+        VS Code extension and this comes with it. To browse and install VS Code extensions yourself,
+        and to use a project's <code>.vscode</code> folder, install <b>CodeBridge</b>.
+        </p>
+        <p>
+        Remote development (split mode) is supported: the UI stays on your machine and extensions run
+        where the project lives. Windows on ARM is not supported.
+        </p>
+    ]]></description>
+
+    <!-- One namespace with CodeBridge's, whose modules build on `shared`, `backend` and `frontend`:
+         those three are visible to that namespace (`visibility="internal"`) and no further. -->
+    <content namespace="codebridge">
+        <module name="CodeBridge.protocol" loading="required"/>
+        <module name="CodeBridge.shared" loading="required"/>
+        <module name="CodeBridge.frontend"/>
+        <module name="CodeBridge.backend"/>
+        <module name="CodeBridge.textmate.backend"/>
+        <module name="CodeBridge.terminal.frontend"/>
+        <module name="CodeBridge.testrunner.backend"/>
+        <module name="CodeBridge.internal.backend"/>
+        <module name="CodeBridge.webview.frontend"/>
+    </content>
+</idea-plugin>

@@ -1,0 +1,8 @@
+<component name="ProjectRunConfigurationManager">
+    <configuration default="false" name="RustRover (Split Mode)" type="CompoundRunConfigurationType"
+                   factoryName="Compound Run Configuration">
+        <toRun type="GradleRunConfiguration" name="RustRover Backend (Split Mode)"/>
+        <toRun type="GradleRunConfiguration" name="RustRover Frontend (Split Mode)"/>
+        <method v="2"/>
+    </configuration>
+</component>
