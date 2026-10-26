@@ -71,31 +71,29 @@ class SplitModeTextMateTest {
                         .firstNotNullOfOrNull { it.getTextAttributes()?.getForegroundColor()?.getRGB() }
                 }
             }
-            awaitValue("client syntax colours", ::colours) { it[0] != null && it[2] != null && it.distinct().size == 3 }
-            driver.withContext(OnDispatcher.EDT) {
-                // Check the language's type on the backend: client files use ThinClientFileType.
-                // TextMate would have claimed
-                // this name -- it has the grammar for it -- and called the file a TextMate file;
-                // `CodeBridgeLanguageFileTypeOverrider` takes it back, and the colours asserted just above
-                // are the proof that taking it back cost the grammar nothing.
-                assertEquals(
-                    "CodeBridge.codebridgegrammar",
-                    driver.utility(LocalFileSystemRef::class, RdTarget.BACKEND).getInstance()
-                        .findFileByPath(project.resolve("example.codebridgegrammar").invariantSeparatorsPathString)!!
-                        .getFileType().getName()
-                )
+            // Logged with every colour check, as what the backend types the file decides the colours.
+            fun backendFileType(): String = driver.withContext(OnDispatcher.EDT) {
+                driver.utility(LocalFileSystemRef::class, RdTarget.BACKEND).getInstance()
+                    .findFileByPath(project.resolve("example.codebridgegrammar").invariantSeparatorsPathString)!!
+                    .getFileType().getName()
             }
+            awaitValue("client syntax colours", ::colours, ::backendFileType) {
+                it[0] != null && it[2] != null && it.distinct().size == 3
+            }
+            // Check the language's type on the backend: client files use ThinClientFileType.
+            // TextMate would have claimed
+            // this name -- it has the grammar for it -- and called the file a TextMate file;
+            // `CodeBridgeLanguageFileTypeOverrider` takes it back, and the colours asserted just above
+            // are the proof that taking it back cost the grammar nothing.
+            assertEquals("CodeBridge.codebridgegrammar", backendFileType())
 
             val installations = driver.service(InstallationsRef::class, RdTarget.BACKEND)
             assertTrue(installations.setEnabled("codebridge.textmate-probe", false))
-            awaitValue("removed syntax colours after disable", ::colours) { it.all { colour -> colour == null } }
+            awaitValue("removed syntax colours after disable", ::colours, ::backendFileType) { it.all { colour -> colour == null } }
             assertTrue(installations.setEnabled("codebridge.textmate-probe", true))
-            awaitValue(
-                "restored syntax colours after enable",
-                ::colours
-            ) { it[0] != null && it[2] != null && it.distinct().size == 3 }
+            awaitValue("restored syntax colours after enable", ::colours, ::backendFileType) { it[0] != null && it[2] != null && it.distinct().size == 3 }
             assertTrue(installations.uninstall("codebridge.textmate-probe"))
-            awaitValue("removed syntax colours after uninstall", ::colours) { it.all { colour -> colour == null } }
+            awaitValue("removed syntax colours after uninstall", ::colours, ::backendFileType) { it.all { colour -> colour == null } }
             assertNull(frontend.getLanguageDescriptorByFileName("example.codebridgegrammar"))
         } catch (error: Throwable) {
             failure = error
@@ -110,18 +108,21 @@ class SplitModeTextMateTest {
         }
     }
 
-    private fun <T> awaitValue(description: String, read: () -> T, matches: (T) -> Boolean): T {
+    /** Waits for [read] to match; [fileType] is reported beside each outcome, the timeout included. */
+    private fun <T> awaitValue(
+        description: String, read: () -> T, fileType: () -> String = { "not asked" }, matches: (T) -> Boolean,
+    ): T {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60)
         var last: T
         do {
             last = read()
             if (matches(last)) {
-                println("$description: $last")
+                println("$description: $last (backend file type ${fileType()})")
                 return last
             }
             Thread.sleep(300)
         } while (System.nanoTime() < deadline)
-        error("Timed out waiting for $description; last observed: $last")
+        error("Timed out waiting for $description; last observed: $last, backend file type ${fileType()}")
     }
 
     @Remote(
