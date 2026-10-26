@@ -23,7 +23,6 @@ import me.helvert.codebridge.uitest.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import java.nio.file.Files
-import java.nio.file.Path
 import kotlin.io.path.writeText
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -51,9 +50,7 @@ class SplitModeStorefrontTest {
         context.install(Installed.CODEBRIDGE)
         // This config directory belongs only to the starter backend, never the developer's IDE.
         ExtensionStore(context.paths.configDir.resolve("codebridge/extensions")).install(requiredPath("codebridge.probe.vsix"))
-        val clientSystem =
-            Files.createTempDirectory(Files.createDirectories(Path.of(System.getProperty("codebridge.test.work"))), "c")
-        context.frontendIDEContext.applyVMOptionsPatch { addSystemProperty("idea.system.path", clientSystem) }
+        context.useShortClientSystemDir()
 
         val run = context.runSplitIde(commands = CommandChain().waitForSmartMode())
         var failure: Throwable? = null
