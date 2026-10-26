@@ -16,8 +16,9 @@ set -uo pipefail
 source_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 work_dir="${CODEBRIDGE_WSL_WORK:-$HOME/codebridge}"
 
-# What Windows builds and downloads stays behind -- .intellijPlatform holds Windows IDEs, which do
-# not run here -- and WSL's own are kept, as excluded files are.
+# What Windows builds and downloads stays behind -- .intellijPlatform holds Windows sandboxes, and
+# Windows IDEs in a checkout older than the shared cache, which do not run here -- and WSL's own are
+# kept, as excluded files are. The IDEs themselves are in WSL's own Gradle user home.
 rsync -a --delete \
     --exclude .git --exclude .gradle --exclude .idea --exclude .kotlin --exclude .intellijPlatform \
     --exclude build --exclude out \

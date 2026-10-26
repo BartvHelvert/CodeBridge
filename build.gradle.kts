@@ -1,4 +1,5 @@
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
+import org.jetbrains.intellij.platform.gradle.extensions.IntelliJPlatformExtension
 import org.jetbrains.intellij.platform.gradle.tasks.BuildPluginTask
 import org.jetbrains.intellij.platform.gradle.tasks.PrepareSandboxTask
 import org.jetbrains.intellij.platform.gradle.tasks.RunIdeTask
@@ -44,6 +45,31 @@ if (System.getProperty("idea.sync.active").toBoolean()) {
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * What every checkout on a machine can share rather than fetch or unpack again: worktrees and fresh
+ * clones start from it. `-PcodebridgeCacheDir=<dir>` puts it elsewhere; by default it is in the
+ * Gradle user home, where WSL keeps its Linux IDEs apart from Windows' ones.
+ *
+ * Only what is named by its version goes here. A sandbox, or anything else a checkout builds, stays in it.
+ */
+val sharedCacheDirectory: File by extra(
+    providers.gradleProperty("codebridgeCacheDir").map(::File).getOrElse(gradle.gradleUserHomeDir.resolve("codebridge"))
+)
+
+/**
+ * The IDEs the build runs against, unpacked once per machine.
+ *
+ * The IntelliJ Platform plugin keeps the downloaded archives in the Gradle user home already, but
+ * unpacks each one, four to five GB, under the checkout's own `.intellijPlatform`.
+ */
+allprojects {
+    pluginManager.withPlugin("org.jetbrains.intellij.platform.base") {
+        extensions.configure<IntelliJPlatformExtension> {
+            caching.ides.path = sharedCacheDirectory.resolve("ides")
         }
     }
 }

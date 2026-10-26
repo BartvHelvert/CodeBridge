@@ -67,7 +67,8 @@ $env:CODEBRIDGE_TEST_LSP_HOST = '1'
 .\gradlew.bat :shared:test --tests '*LanguageFeaturesIntegrationTest' --rerun-tasks
 ```
 
-The first run downloads the runtime into `.gradle/vscodium`; later runs, and `clean`, reuse it.
+The first run downloads the runtime into `<Gradle user home>/codebridge/vscodium`; later runs, `clean` and other
+checkouts reuse it.
 
 `lsp-bundled-extension` needs no `npm ci`: it is committed bundled, which is the property under test.
 Use shell `export` syntax on Linux/macOS. These tests launch child processes and connect OS pipes;
