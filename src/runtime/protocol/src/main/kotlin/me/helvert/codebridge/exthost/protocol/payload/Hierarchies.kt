@@ -11,7 +11,7 @@ import kotlinx.serialization.json.intOrNull
 /**
  * Call and type hierarchies: what VS Code's Show Call Hierarchy and Show Type Hierarchy ask.
  *
- * Read off the 1.135 bundle's `CallHierarchyAdapter` and `TypeHierarchyAdapter`, which work alike.
+ * Read off the 1.143 bundle's `CallHierarchyAdapter` and `TypeHierarchyAdapter`, which work alike.
  * Preparing asks at a position, as a definition is asked, and opens a *session* in the host: the
  * items it answers carry the session's id and their own, and the host keeps the extension's objects
  * under them, since asking for an item's callers or supertypes hands the extension the very object

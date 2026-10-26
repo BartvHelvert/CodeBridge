@@ -5,7 +5,7 @@ import kotlinx.serialization.json.*
 /**
  * `MainThreadTextEditors`' decorations: styling an extension paints over ranges of an editor.
  *
- * Read off the 1.135 bundle's `TextEditorDecorationType` and `setDecorations`. A type is registered
+ * Read off the 1.143 bundle's `TextEditorDecorationType` and `setDecorations`. A type is registered
  * once with its style, under a key the host makes up, and each `setDecorations` replaces the ranges
  * that type covers in one editor. Every style property is CSS text as the extension wrote it, or a
  * `ThemeColor`, which arrives as `{id}`.

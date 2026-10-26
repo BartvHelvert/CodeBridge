@@ -17,7 +17,7 @@ import kotlinx.serialization.json.put
 /**
  * Code actions as the workbench asks for them: quick fixes, refactorings, source actions.
  *
- * Read off the 1.135 bundle's `ExtHostLanguageFeatures` and its `CodeActionAdapter`. A reply is a
+ * Read off the 1.143 bundle's `ExtHostLanguageFeatures` and its `CodeActionAdapter`. A reply is a
  * list the host keeps cached under an id until told to release it, because an action may be
  * resolved or run long after it was offered; each action names its place in that list.
  */

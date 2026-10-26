@@ -17,7 +17,7 @@ object Encodings {
     /** UTF-8 with a byte-order mark. Decodes as [UTF8] does; only writing differs. */
     const val UTF8_BOM: String = "utf8bom"
 
-    /** VS Code's encoding ids, in its order: the keys of 1.135's `SUPPORTED_ENCODINGS`, read off the bundle. */
+    /** VS Code's encoding ids, in its order: the keys of 1.143's `SUPPORTED_ENCODINGS`, read off the bundle. */
     val SUPPORTED: List<String> = listOf(
         "utf8", "utf8bom", "utf16le", "utf16be", "windows1252", "iso88591", "iso88593", "iso885915",
         "macroman", "cp437", "windows1256", "iso88596", "windows1257", "iso88594", "iso885914",

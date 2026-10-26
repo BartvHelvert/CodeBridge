@@ -6,7 +6,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.*
 
-/** Renames and moves, in the shapes the 1.135 host's `ExtHostFileSystemEventService` takes and answers. */
+/** Renames and moves, in the shapes the 1.143 host's `ExtHostFileSystemEventService` takes and answers. */
 class FileOperationsTest {
 
     private val moves = listOf(
