@@ -19,6 +19,12 @@ defaults:
   run:
     shell: bash
 
+# The cache that checkouts on a machine share (see the root build script), in the workspace rather
+# than the Gradle home: the jobs cache the IDEs in it with steps of their own, keyed on the pinned
+# build, and the Windows jobs move the Gradle home to a Dev Drive only after those steps run.
+env:
+  ORG_GRADLE_PROJECT_codebridgeCacheDir: ${{ github.workspace }}/.codebridge-cache
+
 jobs:
   test:
     name: Tests (${{ matrix.os }})
@@ -35,9 +41,9 @@ jobs:
       - uses: actions/checkout@v5
 
       # The IntelliJ Platform Gradle plugin unpacks the IDE the build is pinned to into
-      # `.intellijPlatform/ides` while Gradle configures the build: 4.6 GB, in the checkout rather
-      # than the Gradle home the Gradle action caches, so every job spent minutes on it before its
-      # first task. Kept between runs here, keyed on the pinned build alone.
+      # `.codebridge-cache/ides` while Gradle configures the build: 4.6 GB, outside the Gradle home
+      # the Gradle action caches, so every job spent minutes on it before its first task. Kept
+      # between runs here, keyed on the pinned build alone.
       - name: Read the pinned IDE build
         id: ide
         run: echo "build=$(sed -n 's/^idea = "\([^"]*\)".*/\1/p' gradle/libs.versions.toml)" >> "$GITHUB_OUTPUT"
@@ -45,7 +51,7 @@ jobs:
       - name: Cache the unpacked IDE
         uses: actions/cache@v4
         with:
-          path: .intellijPlatform/ides
+          path: .codebridge-cache/ides
           key: intellij-ide-${{ runner.os }}-${{ runner.arch }}-${{ steps.ide.outputs.build }}
 
       - uses: actions/setup-java@v5
@@ -115,7 +121,7 @@ jobs:
       - name: Cache the unpacked IDE
         uses: actions/cache@v4
         with:
-          path: .intellijPlatform/ides
+          path: .codebridge-cache/ides
           key: intellij-ide-${{ runner.os }}-${{ runner.arch }}-${{ steps.ide.outputs.build }}
 
       - uses: actions/setup-java@v5
@@ -200,7 +206,7 @@ jobs:
       - name: Cache the unpacked IDE
         uses: actions/cache@v4
         with:
-          path: .intellijPlatform/ides
+          path: .codebridge-cache/ides
           key: intellij-ide-${{ runner.os }}-${{ runner.arch }}-${{ steps.ide.outputs.build }}
 
       - uses: actions/setup-java@v5

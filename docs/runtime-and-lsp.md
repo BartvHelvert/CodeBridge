@@ -34,10 +34,11 @@ Resolution order is therefore short:
 ### How the build produces it
 
 The pin and the SHA-256 of each platform's archive live in `src/runtime/plugin/build.gradle.kts`.
-`downloadRuntime_<platform>` fetches an archive into `.gradle/vscodium/<version>` (outside `build`,
-so `clean` keeps it) and fails on a hash mismatch. `repackRuntime_<platform>` moves its contents
-under `runtime/`, archive to archive, and `buildPluginVariants_<os>_<arch>` adds that to the
-variant. Bumping the pin means replacing the version and every hash.
+`downloadRuntime_<platform>` fetches an archive into `vscodium/<version>` of the cache every
+checkout on the machine shares, `<Gradle user home>/codebridge` unless `-PcodebridgeCacheDir` says
+otherwise. It is outside `build`, so `clean` keeps it and a new worktree does not fetch it again.
+The task fails on a hash mismatch. `repackRuntime_<platform>` moves its contents under `runtime/`,
+archive to archive, and `buildPluginVariants_<os>_<arch>` adds that to the variant. Bumping the pin means replacing the version and every hash.
 
 **Executable bits are the fragile part.** IntelliJ restores the Unix modes a plugin ZIP records when
 it installs one, so `node`, `spawn-helper` and `rg` are executable on macOS and Linux only if the ZIP
@@ -384,7 +385,7 @@ Project-startup and endpoint errors also go to the IDE backend's `idea.log`.
 
 | Symptom                                                      | Check or next step                                                                                                                                                                                                                                                        |
 |--------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| A runtime build hash mismatch while building                 | `downloadRuntime_<platform>` checks each archive against the hash pinned in `build.gradle.kts`. Delete the partial download under `.gradle/vscodium` and build again; do not edit the hash to accept an unknown archive.                                                  |
+| A runtime build hash mismatch while building                 | `downloadRuntime_<platform>` checks each archive against the hash pinned in `build.gradle.kts`. Delete the partial download under `<Gradle user home>/codebridge/vscodium` and build again; do not edit the hash to accept an unknown archive.                                                  |
 | An extension activates but provides nothing                  | Check that the extension is enabled and its activation completed, in the backend `idea.log` and the extension's own log in **CodeBridge Output**. Merely installing a VSIX is insufficient.                                                                                      |
 | `connect EPERM` on a Windows named pipe                      | The host could not connect to the plugin's pipe: something in the environment, such as a sandbox or security software, forbids it.                                                                                                                                        |
 | `spawn EPERM`                                                | The extension could not start its server process.                                                                                                                                                                                                                         |

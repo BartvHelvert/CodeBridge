@@ -118,6 +118,10 @@ tasks.test {
     // The IDE the plugins are built against. Without it Starter downloads the newest 2026.3 build,
     // which changes under us and is not the one the Plugin Verifier checked.
     systemProperty("codebridge.ide.build", libs.versions.idea.get())
+    // Where Starter keeps the IDE installers it downloads: in the cache every checkout shares (see
+    // the root build script), beside the IDEs the build unpacks.
+    val sharedCacheDirectory: File by rootProject.extra
+    systemProperty("codebridge.ide.installers", sharedCacheDirectory.resolve("installers").absolutePath)
     systemProperty("codebridge.test.work", rootProject.layout.projectDirectory.dir("out").asFile.absolutePath)
     // The tests' projects by their real paths. On the Windows CI runner the temporary directory is a
     // short name, `C:\Users\RUNNER~1\...`, which the IDEs resolve to `runneradmin`: a file a test

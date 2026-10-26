@@ -173,10 +173,13 @@ abstract class DownloadVerified : DefaultTask() {
 }
 
 /**
- * Downloads go under the project's `.gradle`, not `build`, so `clean` does not cost five 113 MB
- * fetches. Version-qualified, so a bumped pin cannot be confused with the previous one.
+ * Downloads go to the cache every checkout shares (see the root build script), not `build`, so
+ * neither `clean` nor a new worktree costs five 113 MB fetches. Version-qualified, so a bumped pin
+ * cannot be confused with the previous one; the checksum keeps a checkout from using another's
+ * half-written download.
  */
-val vscodiumDownloads = rootProject.layout.projectDirectory.dir(".gradle/vscodium/$vscodiumVersion")
+val sharedCacheDirectory: File by rootProject.extra
+val vscodiumDownloads = layout.projectDirectory.dir(sharedCacheDirectory.resolve("vscodium/$vscodiumVersion").path)
 
 val downloadRuntime = vscodiumPackages.mapValues { (platform, hash) ->
     tasks.register<DownloadVerified>("downloadRuntime_$platform") {

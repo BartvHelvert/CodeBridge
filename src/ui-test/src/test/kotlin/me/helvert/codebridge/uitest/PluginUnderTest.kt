@@ -3,11 +3,13 @@ package me.helvert.codebridge.uitest
 import com.intellij.driver.sdk.ManualWaitForIndicators
 import com.intellij.driver.sdk.openFile
 import com.intellij.driver.sdk.waitForIndicators
+import com.intellij.ide.starter.community.PublicIdeDownloader
 import com.intellij.ide.starter.driver.driver.remoteDev.RemoteDevBackgroundRun
 import com.intellij.ide.starter.driver.engine.BackgroundRun
 import com.intellij.ide.starter.driver.engine.runIdeWithDriver
 import com.intellij.ide.starter.ide.IDERemDevTestContext
 import com.intellij.ide.starter.ide.IDETestContext
+import com.intellij.ide.starter.ide.installer.StandardInstaller
 import com.intellij.ide.starter.models.TestCase
 import com.intellij.ide.starter.project.LocalProjectInfo
 import com.intellij.ide.starter.runner.events.IdeAfterLaunchEvent
@@ -52,10 +54,20 @@ internal enum class Installed {
  * the Windows CI runner the temporary directory is a short name, `C:\Users\RUNNER~1\...`, which the
  * IDE resolves to `runneradmin`; the project was then untrusted, and the backend waited on its Trust
  * and Open Project dialog for as long as the test ran.
+ *
+ * The installer is downloaded to `codebridge.ide.installers`, which every checkout on the machine
+ * shares, instead of under this checkout's `out`. What Starter unpacks from it stays per checkout: it
+ * deletes and rewrites an unpacked build, which another checkout's tests could be running.
  */
-internal fun builtAgainst(project: Path): TestCase<LocalProjectInfo> =
-    TestCase(IdeaUltimateProductInit().ideInfo, LocalProjectInfo(project.toRealPath()))
+internal fun builtAgainst(project: Path): TestCase<LocalProjectInfo> {
+    val pinned = TestCase(IdeaUltimateProductInit().ideInfo, LocalProjectInfo(project.toRealPath()))
         .withBuildNumber(checkNotNull(System.getProperty("codebridge.ide.build")) { "codebridge.ide.build is not set" })
+    val installers = Path.of(checkNotNull(System.getProperty("codebridge.ide.installers")) { "codebridge.ide.installers is not set" })
+    // After the build number: that sets an installer of its own, which downloads from the public feed.
+    return pinned.onIDE(pinned.ideInfo.copy(getInstaller = {
+        StandardInstaller(PublicIdeDownloader(), Files.createDirectories(installers))
+    }))
+}
 
 /** The existing file or directory the Gradle task names in system [property]. */
 internal fun requiredPath(property: String): Path =
