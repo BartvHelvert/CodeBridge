@@ -302,6 +302,13 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
         autosaved += file
     }
 
+    /**
+     * Returns once [worker] has run everything queued before the call, such as the stop an install
+     * asks for. Not from the EDT: what is queued may wait on it.
+     */
+    @TestOnly
+    internal fun awaitWorkerForTest() = runBlocking { withContext(worker) {} }
+
     /** The pending save of each edited document; a later edit replaces it. */
     private val saves = ConcurrentHashMap<Document, Job>()
 
