@@ -10,7 +10,7 @@ import kotlinx.serialization.json.intOrNull
 /**
  * Workspace symbols: what VS Code's "Go to Symbol in Workspace" (Ctrl+T) searches.
  *
- * Read off the 1.135 bundle's `ExtHostLanguageFeatures` and its `NavigateTypeAdapter`. The workbench
+ * Read off the 1.143 bundle's `ExtHostLanguageFeatures` and its `NavigateTypeAdapter`. The workbench
  * calls this "navigate type" support, and unlike every other provider it carries no document
  * selector: a query is about the workspace, not a file. A reply is a list the host keeps cached under
  * an id until told to release it, because a symbol may be resolved later -- a language client whose

@@ -6,7 +6,7 @@ All runtime paths and environment variables below refer to the **backend machine
 ## Runtime selection
 
 The runtime is not configurable. The plugin runs one pinned VSCodium build, currently
-`1.135.06055`, and ships it: CodeBridge Runtime is published as six distributions, one per OS and
+`1.143.17183`, and ships it: CodeBridge Runtime is published as six distributions, one per OS and
 architecture (`intellijPlatform.nativeVariants`, IntelliJ Platform Gradle Plugin 2.19+, which needs
 `sinceBuild` 261 or later), and each carries its own platform's REH package under
 `<plugin>/runtime`. Extension-host rpcIds drift between builds and a mismatch misroutes calls

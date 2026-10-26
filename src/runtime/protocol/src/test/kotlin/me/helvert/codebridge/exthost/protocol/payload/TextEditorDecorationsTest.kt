@@ -6,7 +6,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 
-/** Decoration types and `setDecorations`, as the 1.135 host sends them. */
+/** Decoration types and `setDecorations`, as the 1.143 host sends them. */
 class TextEditorDecorationsTest {
 
     @Test

@@ -9,15 +9,15 @@ under their own licences.
 ## Extension host runtime (VSCodium, VS Code, Node.js)
 
 Each platform's plugin distribution carries VSCodium's remote extension host under `runtime/`: the
-unmodified `vscodium-reh-<platform>-1.135.06055` package from https://github.com/VSCodium/vscodium,
+unmodified `vscodium-reh-<platform>-1.143.17183` package from https://github.com/VSCodium/vscodium,
 plus the built-in extension manifests (`package.json` only) of the same build's web package. It is
 downloaded at build time and not part of this repository.
 
 - **VSCodium**, MIT, `Copyright (c) 2018-present The VSCodium contributors`.
-- **Visual Studio Code -- Open Source** 1.135.0, which VSCodium builds, MIT,
+- **Visual Studio Code -- Open Source** 1.143.1, which VSCodium builds, MIT,
   `Copyright (c) 2015 - present Microsoft Corporation`, with the third-party components it lists in
   its `ThirdPartyNotices.txt`.
-- **Node.js** 24.18.1, the `node` executable, MIT, `Copyright Node.js contributors`, with the
+- **Node.js** 24.22.1, the `node` executable, MIT, `Copyright Node.js contributors`, with the
   components it bundles listed in its `LICENSE`.
 
 The archive carries none of these licences, so the build adds them under `runtime/licenses/`:
@@ -61,7 +61,7 @@ Source: https://github.com/vadimcn/codelldb --- licence text from that repositor
 
 ## Visual Studio Code: webview styles and setting descriptions
 
-Two files the plugin ships contain material from Visual Studio Code -- Open Source 1.135.0
+Two files the plugin ships contain material from Visual Studio Code -- Open Source 1.143.1
 (https://github.com/microsoft/vscode):
 
 - `src/runtime/webview/frontend/src/main/resources/webview/default.css` is the default stylesheet VS Code puts in every

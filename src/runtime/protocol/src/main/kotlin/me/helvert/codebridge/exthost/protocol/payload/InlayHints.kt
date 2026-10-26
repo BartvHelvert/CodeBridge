@@ -14,7 +14,7 @@ import kotlinx.serialization.json.put
 /**
  * Inlay hints: the type after a `let`, the parameter name in front of an argument.
  *
- * Read off the 1.135 bundle's `ExtHostLanguageFeatures` and its `InlayHintsAdapter`. A reply is a
+ * Read off the 1.143 bundle's `ExtHostLanguageFeatures` and its `InlayHintsAdapter`. A reply is a
  * list the host keeps cached under an id until told to release it, because a hint may be resolved,
  * or one of its label parts clicked, long after it was offered.
  */

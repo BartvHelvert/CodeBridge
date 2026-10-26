@@ -1,5 +1,5 @@
 /* What VS Code puts in every webview before the extension's own styles, which come later and win.
- * From Visual Studio Code -- Open Source 1.135.0, src/vs/workbench/contrib/webview/browser/pre/index.html.
+ * From Visual Studio Code -- Open Source 1.143.1, src/vs/workbench/contrib/webview/browser/pre/index.html.
  * Copyright (c) Microsoft Corporation. Licensed under the MIT License; see NOTICE.md in the project root.
  * Changes from the original: no @layer wrapper, overscroll-behavior-x or find-highlight rules. */
 html {

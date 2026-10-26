@@ -90,7 +90,7 @@ then includes all of its identifier names in order. A property name can differ f
 string: `MainThreadLanguageModelTools` uses `MainThreadChatSkills` in the pinned runtime.
 
 A bundled `1.132.1` fallback table is used only when extraction fails. It is still accurate for the
-pinned `1.135.06055` runtime -- the identifier list is unchanged between the two -- and a name it
+pinned `1.143.17183` runtime -- the identifier list is unchanged between the two -- and a name it
 does not hold fails loudly in `require` rather than routing to the wrong service. Extracting IDs does
 not guarantee that method signatures remain compatible.
 

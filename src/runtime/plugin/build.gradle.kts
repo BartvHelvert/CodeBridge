@@ -124,13 +124,13 @@ tasks.verifyPlugin {
  * the `.sha256` published beside each asset. The hashes are pinned here rather than fetched with the
  * archive, so a replaced release asset fails the build instead of shipping.
  */
-val vscodiumVersion = "1.135.06055"
+val vscodiumVersion = "1.143.17183"
 val vscodiumPackages = mapOf(
-    "win32-x64" to "3f7d84ba5b4440e4e328dad4fe182f14bba7333db170485e989ac2c1c49b6a0c",
-    "linux-x64" to "bd23015a35b915bac3c6fca962ca5db427f5c8f049702e48ddeb72757ab32745",
-    "linux-arm64" to "697d2cf622152b3b3affbbd18d48e5ff51e1e2fbf5833ad66262bda413c599c5",
-    "darwin-x64" to "dc80d0c01f870c0c2c4d26469ce3c1ce80dd449b227cd8aee88af4fceb0e7453",
-    "darwin-arm64" to "f645669f423f88fd2626d88f80d3f931b6c21fda93df4177d19a91c46815be1c",
+    "win32-x64" to "a21426e7d2f914c601264c5fb896dda36fed24bd3e363b0f1ed51f532a331216",
+    "linux-x64" to "34dbad673e150f9a5bc6d1190754afcbc4bc173b71922300452eaef3f5cda6ed",
+    "linux-arm64" to "b2c53fa9c515505a85d705a006338c756f6028bcc579134e95d19966e7125080",
+    "darwin-x64" to "9ae7cd592c3b9ce2215e2c7d2b19c1164be31425149d27e703278d4301333036",
+    "darwin-arm64" to "9676699d1ad3ff731a59e0c8645a4f7ac56c9f2a752629e77be96ce8b70500fb",
 )
 
 /**
@@ -139,7 +139,7 @@ val vscodiumPackages = mapOf(
  * them. The REH package leaves them out, having no editor of its own; the web package carries them
  * for the browser's. Identical on every platform, so one platform's package serves all.
  */
-val vscodiumWebPackage = "linux-x64" to "e36cf545d526e7f2e10679e9b35a269e9ba573f9527038bf39bc26aab64d27a6"
+val vscodiumWebPackage = "linux-x64" to "3ac6b8d71b147f0c55d1a230c6654883b401041018b44e9defa18a71c946f73e"
 
 /** Fetches one file and refuses it unless it has the expected SHA-256. */
 @DisableCachingByDefault(because = "A download; keeping a second copy in the build cache gains nothing")
@@ -210,14 +210,14 @@ val downloadWorkbenchExtensions = tasks.register<DownloadVerified>("downloadWork
  * with [vscodiumVersion].
  */
 val runtimeLicenses = mapOf(
-    "vscode-LICENSE.txt" to ("https://raw.githubusercontent.com/microsoft/vscode/1.135.0/LICENSE.txt" to
+    "vscode-LICENSE.txt" to ("https://raw.githubusercontent.com/microsoft/vscode/1.143.1/LICENSE.txt" to
             "9480271317925265e806a9a196aaa33410a962fa9d4d1e248a4a5187bc8c9df9"),
-    "vscode-ThirdPartyNotices.txt" to ("https://raw.githubusercontent.com/microsoft/vscode/1.135.0/ThirdPartyNotices.txt" to
+    "vscode-ThirdPartyNotices.txt" to ("https://raw.githubusercontent.com/microsoft/vscode/1.143.1/ThirdPartyNotices.txt" to
             "4cb210d0c8f8fa304b37a31d44436ebf86dff59466a4033fbcd0c401d63c6568"),
     "vscodium-LICENSE.txt" to ("https://raw.githubusercontent.com/VSCodium/vscodium/$vscodiumVersion/LICENSE" to
             "2fa3f8948a0a17ea30b62845caf1ee8aae8b55b5417273920ca2df2642209e0e"),
-    "node-LICENSE.txt" to ("https://raw.githubusercontent.com/nodejs/node/v24.18.1/LICENSE" to
-            "148eacf7863ef4329224a29398623077200a27194aa075569faf4a0a85566ca5"),
+    "node-LICENSE.txt" to ("https://raw.githubusercontent.com/nodejs/node/v24.22.1/LICENSE" to
+            "5888dbb9a1d2b18f2c3e6c5f6af1b39de658372b402a0577b002777f14c62ace"),
 )
 
 val downloadRuntimeLicenses = runtimeLicenses.map { (name, source) ->

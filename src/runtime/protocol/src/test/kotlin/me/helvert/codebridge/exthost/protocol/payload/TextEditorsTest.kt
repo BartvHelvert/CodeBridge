@@ -4,7 +4,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
-/** `MainThreadTextEditors` calls as the 1.135 host sends them. */
+/** `MainThreadTextEditors` calls as the 1.143 host sends them. */
 class TextEditorsTest {
 
     private val at = """{"startLineNumber":2,"startColumn":5,"endLineNumber":2,"endColumn":5}"""

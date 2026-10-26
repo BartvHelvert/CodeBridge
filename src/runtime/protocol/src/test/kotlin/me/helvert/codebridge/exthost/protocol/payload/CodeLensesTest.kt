@@ -6,7 +6,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
-/** Code lenses, in the shapes the 1.135 host sends. */
+/** Code lenses, in the shapes the 1.143 host sends. */
 @Suppress("KotlinMisorderedAssertEqualsArguments") // expected values do come first
 class CodeLensesTest {
 

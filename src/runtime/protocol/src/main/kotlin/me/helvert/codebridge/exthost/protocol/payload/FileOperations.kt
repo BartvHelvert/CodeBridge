@@ -6,7 +6,7 @@ import kotlinx.serialization.json.*
  * Files the user creates, deletes, renames, moves or copies, as extensions hear of them:
  * `workspace.onWill*Files` and `workspace.onDid*Files`.
  *
- * Read off the 1.135 bundle's `ExtHostFileSystemEventService`. Before the operation, the host fires
+ * Read off the 1.143 bundle's `ExtHostFileSystemEventService`. Before the operation, the host fires
  * the will-event and answers with the edits the listeners handed `event.waitUntil` -- a language
  * client's `workspace/willRenameFiles`, say, which is how a server updates the imports of a moved
  * file. After it, the did-event, which answers nothing. Nothing is registered first: the host fires

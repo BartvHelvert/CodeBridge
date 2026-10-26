@@ -8,7 +8,7 @@ import kotlinx.serialization.json.intOrNull
 /**
  * `MainThreadTextEditors`: what an extension does to an editor rather than to a document.
  *
- * Read off the 1.135 bundle's `ExtHostTextEditor`. The editor ids are the ones the host was given
+ * Read off the 1.143 bundle's `ExtHostTextEditor`. The editor ids are the ones the host was given
  * when the document was mirrored, so an extension can only name editors it has been told about.
  * Language clients reach this more than it looks: `window.showTextDocument` followed by
  * `editor.edit` is how rust-analyzer applies every assist that is not a snippet.

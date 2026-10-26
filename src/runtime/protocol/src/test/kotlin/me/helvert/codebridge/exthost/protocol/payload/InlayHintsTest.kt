@@ -5,7 +5,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import java.nio.file.Path
 import kotlin.test.*
 
-/** Inlay hints, in the shapes the 1.135 host sends. */
+/** Inlay hints, in the shapes the 1.143 host sends. */
 @Suppress("KotlinMisorderedAssertEqualsArguments") // expected values do come first
 class InlayHintsTest {
 

@@ -5,7 +5,7 @@ import kotlinx.serialization.json.*
 /**
  * Code lenses: "Run", "Debug", "3 references" above the line they are about.
  *
- * Read off the 1.135 bundle's `ExtHostLanguageFeatures` and its `CodeLensAdapter`. A reply is a list
+ * Read off the 1.143 bundle's `ExtHostLanguageFeatures` and its `CodeLensAdapter`. A reply is a list
  * the host keeps cached under an id until told to release it: a lens may arrive with only its range
  * and be resolved later, and the command a lens carries is converted into one the host keeps with
  * the list -- it can only be run while that list has not been released.

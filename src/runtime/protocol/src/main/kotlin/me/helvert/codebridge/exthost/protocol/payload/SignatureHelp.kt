@@ -14,7 +14,7 @@ import kotlinx.serialization.json.put
 /**
  * Signature help: the signature of the call the caret is in, with the argument being typed picked out.
  *
- * Read off the 1.135 bundle's `ExtHostLanguageFeatures` and its `SignatureHelpAdapter`. A reply is
+ * Read off the 1.143 bundle's `ExtHostLanguageFeatures` and its `SignatureHelpAdapter`. A reply is
  * kept by the host under its `id` until released, because the next request about the same call
  * names it as `activeSignatureHelp`, and the host hands the extension back its own object.
  */

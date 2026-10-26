@@ -66,7 +66,7 @@ The plugin stands in for the VS Code workbench: extensions call `MainThread*` se
 editor on the other end. Anything unanswered is a hole an extension can fall into, whatever the state
 of language support.
 
-87 services in the pinned runtime (VSCodium 1.135.06055), read from the running bundle rather than a
+87 services in the pinned runtime (VSCodium 1.143.17183), read from the running bundle rather than a
 checked-in list. **16 implemented, 20 partial, 1 stubbed, 50 not supported.** See
 [workbench coverage](workbench-coverage.md) for details and for the separate question of which
 language-feature providers are drawn.

@@ -5,7 +5,7 @@ CodeBridge runs the real VS Code extension host and stands in for the workbench:
 not answer is a hole an extension can fall into, regardless of how good language support is.
 
 This page lists which services are answered and which are not. Counts come from the pinned runtime (VSCodium
-1.135.06055) rather than the checked-in id table, because `VsCodeInstallation.rpcIdTable`
+1.143.17183) rather than the checked-in id table, because `VsCodeInstallation.rpcIdTable`
 extracts ids from the actual bundle and only falls back to the bundled table.
 
 **87 services. 37 implemented, partial or stubbed. 50 not answered.** The unanswered count includes
