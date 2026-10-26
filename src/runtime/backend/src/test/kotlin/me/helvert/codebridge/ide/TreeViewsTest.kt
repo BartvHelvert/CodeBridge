@@ -1,5 +1,6 @@
 package me.helvert.codebridge.ide
 
+import com.intellij.openapi.components.serviceIfCreated
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.first
@@ -12,6 +13,7 @@ import me.helvert.codebridge.extensions.ExtensionInstallationService
 import me.helvert.codebridge.exthost.MainThreadCall
 import me.helvert.codebridge.exthost.protocol.payload.TreeViews
 import me.helvert.codebridge.exthost.protocol.payload.UriComponents
+import me.helvert.codebridge.language.HostedLanguageServers
 import me.helvert.codebridge.rpc.TreeEventDto
 import me.helvert.codebridge.rpc.TreeViewDto
 import me.helvert.codebridge.rpc.WelcomeLineDto
@@ -39,13 +41,28 @@ import kotlin.time.Duration.Companion.seconds
 class TreeViewsTest : EditorFixture() {
 
     @BeforeEach
-    fun installViews() = onEdt { install() }
+    fun installViews() {
+        onEdt { install() }
+        settle()
+    }
 
     @AfterEach
-    fun forget() = onEdt {
-        // A light fixture can share its project, and with it this service, between tests.
-        treeViews.hostStopped()
-        ExtensionInstallationService.getInstance().uninstall(EXTENSION)
+    fun forget() {
+        onEdt {
+            // A light fixture can share its project, and with it this service, between tests.
+            treeViews.hostStopped()
+            ExtensionInstallationService.getInstance().uninstall(EXTENSION)
+        }
+        settle()
+    }
+
+    /**
+     * Lets the host stop that installing or removing an extension queues run out first. A test
+     * class before this one may have created the project's language servers, and their stop clears
+     * every tree view: landing mid-test, it bumped a generation the test had just read.
+     */
+    private fun settle() {
+        fixture.project.serviceIfCreated<HostedLanguageServers>()?.awaitWorkerForTest()
     }
 
     @Test
