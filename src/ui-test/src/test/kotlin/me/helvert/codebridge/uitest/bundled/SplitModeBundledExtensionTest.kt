@@ -15,7 +15,6 @@ import me.helvert.codebridge.uitest.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import java.nio.file.Files
-import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 import kotlin.io.path.writeText
 import kotlin.test.assertFalse
@@ -49,10 +48,7 @@ class SplitModeBundledExtensionTest {
         // The backend alone: the extension runs where the project is, and the bundling plugin has
         // nothing for a client to load.
         context.pluginConfigurator.installPluginFromDir(requiredPath("codebridge.bundling.plugin"))
-        val clientSystem = Files.createTempDirectory(
-            Files.createDirectories(Path.of(System.getProperty("codebridge.test.work"))), "c",
-        )
-        context.frontendIDEContext.applyVMOptionsPatch { addSystemProperty("idea.system.path", clientSystem) }
+        context.useShortClientSystemDir()
 
         val run = context.runSplitIde(
             commands = CommandChain().waitForSmartMode(), open = file.fileName.toString(),

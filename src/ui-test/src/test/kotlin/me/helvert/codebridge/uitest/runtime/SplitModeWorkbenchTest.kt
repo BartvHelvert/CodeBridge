@@ -58,10 +58,7 @@ class SplitModeWorkbenchTest {
         ) as IDERemDevTestContext
         context.install(Installed.RUNTIME)
         ExtensionStore(context.paths.configDir.resolve("codebridge/extensions")).install(requiredPath("codebridge.workbench.vsix"))
-        // Short, for the reason SplitModeExtensionTest gives.
-        val clientSystem =
-            Files.createTempDirectory(Files.createDirectories(Path.of(System.getProperty("codebridge.test.work"))), "c")
-        context.frontendIDEContext.applyVMOptionsPatch { addSystemProperty("idea.system.path", clientSystem) }
+        context.useShortClientSystemDir()
         val screenshots = Files.createDirectories(Path.of(System.getProperty("codebridge.test.work")).resolve("screenshots"))
 
         val run = context.runSplitIde(commands = CommandChain().waitForSmartMode(), open = "example.json")

@@ -20,6 +20,7 @@ import me.helvert.codebridge.uitest.Installed
 import me.helvert.codebridge.uitest.builtAgainst
 import me.helvert.codebridge.uitest.install
 import me.helvert.codebridge.uitest.runSplitIde
+import me.helvert.codebridge.uitest.useShortClientSystemDir
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import java.nio.file.Files
@@ -101,10 +102,7 @@ class SplitModeTabColorProbe {
             testCase = builtAgainst(project),
         ) as IDERemDevTestContext
         context.install(Installed.CODEBRIDGE)
-        val clientSystem = Files.createTempDirectory(
-            Files.createDirectories(Path.of(System.getProperty("codebridge.test.work"))), "c",
-        )
-        context.frontendIDEContext.applyVMOptionsPatch { addSystemProperty("idea.system.path", clientSystem) }
+        context.useShortClientSystemDir()
         return context
     }
 

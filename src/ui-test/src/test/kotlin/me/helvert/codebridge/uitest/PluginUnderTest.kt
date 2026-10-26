@@ -25,6 +25,8 @@ import java.awt.Rectangle
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
+import kotlin.io.path.ExperimentalPathApi
+import kotlin.io.path.deleteRecursively
 import kotlin.io.path.writeText
 import kotlin.time.Duration.Companion.minutes
 
@@ -175,6 +177,10 @@ internal fun IDETestContext.runSplitIde(
     earlierContexts.forEach { it.wipeSystemDir() }
     earlierContexts.clear()
     earlierContexts += listOfNotNull(this, (this as? IDERemDevTestContext)?.frontendIDEContext)
+    earlierClientSystems.forEach(::deleteQuietly)
+    earlierClientSystems.clear()
+    pendingClientSystem?.let(earlierClientSystems::add)
+    pendingClientSystem = null
     val frame = secondaryScreenFrame()
     val placementAgent = if (frame == null) null else Path.of(checkNotNull(System.getProperty("codebridge.window.agent")) {
         "codebridge.window.agent is not set; build :ui-test:windowAgentJar before launching UI tests"
@@ -223,6 +229,45 @@ private const val JDK_AUTO_SETUP = "jdk.auto.setup"
 
 /** The IDEs the previous [runSplitIde] started, closed by the time the next one starts. */
 private val earlierContexts = mutableListOf<IDETestContext>()
+
+/**
+ * Gives the client a system directory of its own, with a short path.
+ *
+ * Windows' DirectoryLock moves a socket whose path is too long into `Windows\Temp`, where a
+ * restricted test account cannot bind it, and Starter's own system directory for the client is deep
+ * under `out/ide-tests`.
+ *
+ * Deleted as the backend's is, once the next [runSplitIde] starts; what an earlier test JVM left
+ * behind, once the first of this one asks for a directory.
+ */
+internal fun IDERemDevTestContext.useShortClientSystemDir() {
+    val directory = Files.createTempDirectory(clientSystemRoot, "c")
+    frontendIDEContext.applyVMOptionsPatch { addSystemProperty("idea.system.path", directory) }
+    pendingClientSystem?.let(::deleteQuietly)
+    pendingClientSystem = directory
+}
+
+/** Where [useShortClientSystemDir] makes its directories, emptied of an earlier test JVM's. */
+private val clientSystemRoot: Path by lazy {
+    val root = Path.of(checkNotNull(System.getProperty("codebridge.test.work")) { "codebridge.test.work is not set" }, "c")
+    deleteQuietly(root)
+    Files.createDirectories(root)
+}
+
+/** The client system directory of a context whose IDEs have not started yet. */
+private var pendingClientSystem: Path? = null
+
+/** The client system directories of the IDEs the previous [runSplitIde] started. */
+private val earlierClientSystems = mutableListOf<Path>()
+
+/**
+ * Deletes [path] and what is in it, as far as it can: a file the closed IDE's processes still
+ * hold on Windows is left for a later run, rather than failing this test.
+ */
+@OptIn(ExperimentalPathApi::class)
+private fun deleteQuietly(path: Path) {
+    runCatching { path.deleteRecursively() }
+}
 
 /**
  * Makes the project frame open centred on the first screen that is not the primary one, if there is

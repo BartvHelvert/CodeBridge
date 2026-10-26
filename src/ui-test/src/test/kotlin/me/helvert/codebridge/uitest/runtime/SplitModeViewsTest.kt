@@ -22,7 +22,6 @@ import me.helvert.codebridge.uitest.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import java.nio.file.Files
-import java.nio.file.Path
 import java.util.concurrent.TimeUnit
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
@@ -201,13 +200,8 @@ class SplitModeViewsTest {
         context.install(Installed.RUNTIME)
         ExtensionStore(context.paths.configDir.resolve("codebridge/extensions"))
             .install(requiredPath("codebridge.workbench.vsix"))
-        val clientSystem = Files.createTempDirectory(
-            Files.createDirectories(Path.of(System.getProperty("codebridge.test.work"))), "c",
-        )
-        context.frontendIDEContext.applyVMOptionsPatch {
-            addSystemProperty("idea.system.path", clientSystem)
-            addSystemProperty("ide.browser.jcef.jsQueryPoolSize", 100)
-        }
+        context.useShortClientSystemDir()
+        context.frontendIDEContext.applyVMOptionsPatch { addSystemProperty("ide.browser.jcef.jsQueryPoolSize", 100) }
         val run = context.runSplitIde(commands = CommandChain().waitForSmartMode())
         var failure: Throwable? = null
         try {

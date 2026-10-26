@@ -44,9 +44,7 @@ internal fun withWorkbenchProbe(
     ExtensionStore(context.paths.configDir.resolve("codebridge/extensions")).install(requiredPath("codebridge.workbench.vsix"))
     context.disableAutoCompletion()
     context.frontendIDEContext.disableAutoCompletion()
-    val clientSystem =
-        Files.createTempDirectory(Files.createDirectories(Path.of(System.getProperty("codebridge.test.work"))), "c")
-    context.frontendIDEContext.applyVMOptionsPatch { addSystemProperty("idea.system.path", clientSystem) }
+    context.useShortClientSystemDir()
     if (traced != null) {
         context.applyVMOptionsPatch { addSystemProperty("idea.log.trace.categories", traced) }
         context.frontendIDEContext.applyVMOptionsPatch { addSystemProperty("idea.log.trace.categories", traced) }
