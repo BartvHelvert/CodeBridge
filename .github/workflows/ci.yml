@@ -23,7 +23,7 @@ defaults:
 # than the Gradle home: the jobs cache the IDEs in it with steps of their own, keyed on the pinned
 # build, and the Windows jobs move the Gradle home to a Dev Drive only after those steps run.
 env:
-  ORG_GRADLE_PROJECT_codebridgeCacheDir: ${{ github.workspace }}/.codebridge-cache
+  ORG_GRADLE_PROJECT_codebridgeCacheDir: .codebridge-cache
 
 jobs:
   test:

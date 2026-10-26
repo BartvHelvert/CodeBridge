@@ -51,13 +51,14 @@ if (System.getProperty("idea.sync.active").toBoolean()) {
 
 /**
  * What every checkout on a machine can share rather than fetch or unpack again: worktrees and fresh
- * clones start from it. `-PcodebridgeCacheDir=<dir>` puts it elsewhere; by default it is in the
- * Gradle user home, where WSL keeps its Linux IDEs apart from Windows' ones.
+ * clones start from it. `-PcodebridgeCacheDir=<dir>` puts it elsewhere, a relative path being one in
+ * the checkout; by default it is in the Gradle user home, where WSL keeps its Linux IDEs apart from
+ * Windows' ones.
  *
  * Only what is named by its version goes here. A sandbox, or anything else a checkout builds, stays in it.
  */
 val sharedCacheDirectory: File by extra(
-    providers.gradleProperty("codebridgeCacheDir").map(::File).getOrElse(gradle.gradleUserHomeDir.resolve("codebridge"))
+    providers.gradleProperty("codebridgeCacheDir").map(rootDir::resolve).getOrElse(gradle.gradleUserHomeDir.resolve("codebridge"))
 )
 
 /**
