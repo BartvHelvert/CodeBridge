@@ -72,10 +72,14 @@ jobs:
 
       # The temporary directory too, where the test fixtures write their projects: a scan holding a
       # file just written there failed a test writing it again ("being used by another process").
+      # Under its long name as well: TEMP is the 8.3 `RUNNER~1` path, while the tests write under
+      # `runneradmin`. The exclusions are listed so the log shows what Defender registered.
       - name: Exclude workspace from Defender
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:GRADLE_USER_HOME, $env:TEMP
+        run: |
+          Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:GRADLE_USER_HOME, $env:TEMP, "$env:LOCALAPPDATA\Temp"
+          (Get-MpPreference).ExclusionPath
 
       - uses: gradle/actions/setup-gradle@v5
 
@@ -227,7 +231,9 @@ jobs:
       - name: Exclude workspace from Defender
         if: runner.os == 'Windows'
         shell: pwsh
-        run: Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:GRADLE_USER_HOME, $env:TEMP
+        run: |
+          Add-MpPreference -ExclusionPath $env:GITHUB_WORKSPACE, $env:GRADLE_USER_HOME, $env:TEMP, "$env:LOCALAPPDATA\Temp"
+          (Get-MpPreference).ExclusionPath
 
       # The Windows runner's screen is 1024x768, where the client's toolbar shortens the project's
       # name, and the driver, looking for the name whole, waited for a frame that was long ready.
