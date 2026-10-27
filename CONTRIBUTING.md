@@ -86,8 +86,9 @@ Refs #42
 - The type is one of `feat`, `fix`, `docs`, `test`, `refactor`, `perf`, `build`, `ci` or `chore`.
 - The scope is optional: the area the change is in, such as `lsp`, `webview`, `terminal`,
   `marketplace` or `ui-test`. Leave it out when a change spans several areas.
-- The subject is imperative and lowercase, without a trailing period, and at most 72 characters
-  including the prefix.
+- The subject is imperative and lowercase, without a trailing period. Aim for 50 characters, at
+  most 72, both counting the prefix. Say what changes, not how or why: leave class and file
+  names out, and put "instead of ..." reasons in the body.
 - The body, when there is one, explains why. Wrap it at 72 characters.
 - Refer to an issue in a footer: `Refs #42` in commits, `Fixes #42` in the pull request.
 - Mark a breaking change with `!` after the type or scope, such as `feat(api)!:`, and describe it

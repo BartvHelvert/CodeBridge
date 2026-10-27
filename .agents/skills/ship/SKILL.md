@@ -34,9 +34,11 @@ Stage only the files you changed for this work, by path; never `git add -A` or `
 would pick up other sessions' edits.
 
 Write the message in the Conventional Commits format described in `CONTRIBUTING.md`, for example
-`fix(lsp): show hover Markdown as rendered text`, with a body that explains why. With an issue, end
-the message with a `Refs #<N>` footer. PRs are rebased onto `master`, so every commit lands there by
-itself: each one should build, not only the last.
+`fix(lsp): show hover Markdown as rendered text`, with a body that explains why. Count the subject
+before committing: aim for 50 characters, at most 72, prefix included. Leave class and file names
+out of it and move the reason into the body. With an issue, end the message with a `Refs #<N>`
+footer. PRs are rebased onto `master`, so every commit lands there by itself: each one should
+build, not only the last.
 
 For option 1, stop here. Don't push.
 
