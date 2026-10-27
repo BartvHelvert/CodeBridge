@@ -28,7 +28,7 @@ class TerminalOutputOrderTest {
         val order = TerminalOutputOrder({ console += label(it) }, { true }, { terminalDone }, scope)
 
         order.offer(output("Launching"))
-        Thread.sleep(250)
+        awaitSize(console, 1)
         assertEquals(listOf("Launching"), console, "The adapter's output is shown, a moment late")
 
         // As CodeLLDB ends a run, with the terminal's text a few milliseconds behind it.
@@ -39,9 +39,14 @@ class TerminalOutputOrderTest {
         console += "Greetings"
         terminalDone.complete(Unit)
 
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
-        while (console.size < 5 && System.nanoTime() < deadline) Thread.sleep(20)
+        awaitSize(console, 5)
         assertEquals(listOf("Launching", "Greetings", "Process exited", "exited", "terminated"), console)
+    }
+
+    /** Waits for [list] to reach [size]: on a busy CI runner the delayed output can come well after it is due. */
+    private fun awaitSize(list: List<String>, size: Int) {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (list.size < size && System.nanoTime() < deadline) Thread.sleep(20)
     }
 
     @Test
