@@ -5,6 +5,9 @@ import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.ui.JBColor
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
@@ -15,28 +18,12 @@ import java.awt.Color
  * and so on) and the class it puts on the page's body (`vscode-dark`). Pages are written against
  * these, so a page themed by them follows the IDE's theme.
  *
- * Only the colours pages commonly read; each from the IDE colour that plays the same part, since
- * there is no table between the two themes to read them from.
+ * The colors pages commonly read come from the IDE colors that play the same part, since there is
+ * no table between the two themes to read them from. Every other color VS Code registers, or an
+ * extension contributes, is worked out from those by its defaults, as VS Code does for a theme that
+ * does not set it: see [VsCodeThemeDefaults].
  */
 internal data class WebviewTheme(val vars: Map<String, String>, val kind: String, val name: String) {
-
-    fun withContributedColors(colors: Map<String, Map<String, String>>): WebviewTheme {
-        val themeKind = if (kind == "vscode-light") "light" else "dark"
-        fun variable(id: String) = "--vscode-${id.replace('.', '-')}"
-        fun resolve(id: String, visited: Set<String>): String? {
-            vars[variable(id)]?.let { return it }
-            if (id in visited || visited.size >= 32) return null
-            val value = colors[id]?.get(themeKind) ?: return null
-            return if (value.startsWith('#')) {
-                value.takeIf { it.matches(Regex("#[0-9a-fA-F]{3}|#[0-9a-fA-F]{4}|#[0-9a-fA-F]{6}|#[0-9a-fA-F]{8}")) }
-            } else resolve(value, visited + id)
-        }
-
-        val contributed = colors.keys.filter { it.matches(Regex("[a-zA-Z0-9_.-]+")) }.mapNotNull { id ->
-            resolve(id, emptySet())?.let { variable(id) to it }
-        }.toMap()
-        return copy(vars = contributed + vars)
-    }
 
     /** The variables as a `:root` rule, for the page's first paint. */
     val css: String get() = vars.entries.joinToString(" ", ":root { ", " }") { (name, value) -> "$name: $value;" }
@@ -49,8 +36,12 @@ internal data class WebviewTheme(val vars: Map<String, String>, val kind: String
     }.toString()
 
     companion object {
-        /** The theme now. [panel] is for a page in a tool window, whose background is the panel's rather than the editor's. */
-        fun current(panel: Boolean): WebviewTheme {
+        /**
+         * The theme now. [panel] is for a page in a tool window, whose background is the panel's rather
+         * than the editor's; [contributed] are the colors extensions contribute, by id, with their
+         * `light` and `dark` defaults.
+         */
+        fun current(panel: Boolean, contributed: Map<String, Map<String, String>> = emptyMap()): WebviewTheme {
             val scheme = EditorColorsManager.getInstance().globalScheme
             val dark = !JBColor.isBright()
             val editorBackground = scheme.defaultBackground
@@ -67,7 +58,7 @@ internal data class WebviewTheme(val vars: Map<String, String>, val kind: String
             val listSelection = JBUI.CurrentTheme.List.Selection.background(true)
             val listForeground = JBUI.CurrentTheme.List.Selection.foreground(true)
             val popup = JBUI.CurrentTheme.Popup.BACKGROUND
-            val vars = linkedMapOf(
+            val fonts = linkedMapOf(
                 "--vscode-font-family" to "'${font.family}', system-ui, sans-serif",
                 "--vscode-font-size" to "${font.size}px",
                 "--vscode-font-weight" to "normal",
@@ -75,91 +66,113 @@ internal data class WebviewTheme(val vars: Map<String, String>, val kind: String
                 "--vscode-editor-font-size" to "${scheme.editorFontSize}px",
                 "--vscode-editor-font-weight" to "normal",
                 "--monaco-monospace-font" to "'${scheme.editorFontName}', monospace",
-                "--vscode-foreground" to css(foreground),
-                "--vscode-descriptionForeground" to css(muted),
-                "--vscode-disabledForeground" to css(muted),
-                "--vscode-errorForeground" to css(named("Label.errorForeground", JBColor.RED)),
-                "--vscode-icon-foreground" to css(foreground),
-                "--vscode-focusBorder" to css(JBUI.CurrentTheme.Focus.focusColor()),
-                "--vscode-contrastBorder" to "transparent",
-                "--vscode-widget-border" to css(border),
-                "--vscode-widget-shadow" to css(alpha(Color.BLACK, if (dark) 0.36 else 0.16)),
-                "--vscode-selection-background" to css(selection),
-                "--vscode-editor-background" to css(editorBackground),
-                "--vscode-editor-foreground" to css(editorForeground),
-                "--vscode-editor-selectionBackground" to css(selection),
-                "--vscode-editorCursor-foreground" to css(scheme.getColor(EditorColors.CARET_COLOR) ?: editorForeground),
-                "--vscode-editorLineNumber-foreground" to css(scheme.getColor(EditorColors.LINE_NUMBERS_COLOR) ?: muted),
-                "--vscode-editorWidget-background" to css(popup),
-                "--vscode-editorWidget-foreground" to css(foreground),
-                "--vscode-editorWidget-border" to css(border),
-                "--vscode-editorHoverWidget-background" to css(popup),
-                "--vscode-editorHoverWidget-border" to css(border),
-                "--vscode-sideBar-background" to css(background),
-                "--vscode-sideBar-foreground" to css(foreground),
-                "--vscode-sideBarTitle-foreground" to css(foreground),
-                "--vscode-sideBarSectionHeader-background" to css(background),
-                "--vscode-sideBarSectionHeader-foreground" to css(foreground),
-                "--vscode-sideBarSectionHeader-border" to css(border),
-                "--vscode-panel-background" to css(background),
-                "--vscode-panel-border" to css(border),
-                "--vscode-panelTitle-activeForeground" to css(foreground),
-                "--vscode-button-background" to css(buttonBackground),
-                "--vscode-button-foreground" to css(named("Button.default.foreground", Color.WHITE)),
-                "--vscode-button-hoverBackground" to css(lighter(buttonBackground, dark)),
-                "--vscode-button-border" to "transparent",
-                "--vscode-button-secondaryBackground" to css(named("Button.startBackground", background)),
-                "--vscode-button-secondaryForeground" to css(named("Button.foreground", foreground)),
-                "--vscode-button-secondaryHoverBackground" to css(lighter(named("Button.startBackground", background), dark)),
-                "--vscode-input-background" to css(inputBackground),
-                "--vscode-input-foreground" to css(named("TextField.foreground", foreground)),
-                "--vscode-input-border" to css(named("Component.borderColor", border)),
-                "--vscode-input-placeholderForeground" to css(muted),
-                "--vscode-inputOption-hoverBackground" to css(JBUI.CurrentTheme.ActionButton.hoverBackground()),
-                "--vscode-inputOption-activeBorder" to css(JBUI.CurrentTheme.Focus.focusColor()),
-                "--vscode-inputValidation-errorBorder" to css(named("Component.errorFocusColor", JBColor.RED)),
-                "--vscode-dropdown-background" to css(named("ComboBox.background", inputBackground)),
-                "--vscode-dropdown-foreground" to css(named("ComboBox.foreground", foreground)),
-                "--vscode-dropdown-border" to css(named("Component.borderColor", border)),
-                "--vscode-dropdown-listBackground" to css(popup),
-                "--vscode-checkbox-background" to css(inputBackground),
-                "--vscode-checkbox-foreground" to css(foreground),
-                "--vscode-checkbox-border" to css(named("Component.borderColor", border)),
-                "--vscode-list-hoverBackground" to css(JBUI.CurrentTheme.List.Hover.background(true)),
-                "--vscode-list-activeSelectionBackground" to css(listSelection),
-                "--vscode-list-activeSelectionForeground" to css(listForeground),
-                "--vscode-list-inactiveSelectionBackground" to css(JBUI.CurrentTheme.List.Selection.background(false)),
-                "--vscode-list-focusOutline" to css(JBUI.CurrentTheme.Focus.focusColor()),
-                "--vscode-list-highlightForeground" to css(link),
-                "--vscode-badge-background" to css(named("Counter.background", buttonBackground)),
-                "--vscode-badge-foreground" to css(named("Counter.foreground", Color.WHITE)),
-                "--vscode-progressBar-background" to css(named("ProgressBar.progressColor", buttonBackground)),
-                "--vscode-textLink-foreground" to css(link),
-                "--vscode-textLink-activeForeground" to css(JBUI.CurrentTheme.Link.Foreground.HOVERED),
-                "--vscode-textPreformat-foreground" to css(editorForeground),
-                "--vscode-textPreformat-background" to css(alpha(editorForeground, 0.1)),
-                "--vscode-textCodeBlock-background" to css(alpha(editorForeground, 0.08)),
-                "--vscode-textBlockQuote-background" to css(alpha(editorForeground, 0.06)),
-                "--vscode-textBlockQuote-border" to css(alpha(link, 0.5)),
-                "--vscode-textSeparator-foreground" to css(border),
-                "--vscode-toolbar-hoverBackground" to css(JBUI.CurrentTheme.ActionButton.hoverBackground()),
-                "--vscode-keybindingLabel-background" to css(alpha(editorForeground, 0.1)),
-                "--vscode-keybindingLabel-foreground" to css(foreground),
-                "--vscode-keybindingLabel-border" to css(border),
-                "--vscode-keybindingLabel-bottomBorder" to css(border),
-                "--vscode-scrollbarSlider-background" to css(alpha(foreground, 0.2)),
-                "--vscode-scrollbarSlider-hoverBackground" to css(alpha(foreground, 0.35)),
-                "--vscode-scrollbarSlider-activeBackground" to css(alpha(foreground, 0.5)),
-                "--vscode-tab-activeBackground" to css(editorBackground),
-                "--vscode-tab-activeForeground" to css(foreground),
-                "--vscode-tab-inactiveForeground" to css(muted),
-                "--vscode-menu-background" to css(popup),
-                "--vscode-menu-foreground" to css(foreground),
-                "--vscode-menu-selectionBackground" to css(listSelection),
-                "--vscode-menu-selectionForeground" to css(listForeground),
-                "--vscode-notifications-background" to css(popup),
-                "--vscode-notifications-foreground" to css(foreground),
             )
+            val colors = linkedMapOf(
+                "foreground" to foreground,
+                "descriptionForeground" to muted,
+                "disabledForeground" to muted,
+                "errorForeground" to named("Label.errorForeground", JBColor.RED),
+                "icon.foreground" to foreground,
+                "focusBorder" to JBUI.CurrentTheme.Focus.focusColor(),
+                "widget.border" to border,
+                "widget.shadow" to alpha(Color.BLACK, if (dark) 0.36 else 0.16),
+                "selection.background" to selection,
+                "editor.background" to editorBackground,
+                "editor.foreground" to editorForeground,
+                "editor.selectionBackground" to selection,
+                "editorCursor.foreground" to (scheme.getColor(EditorColors.CARET_COLOR) ?: editorForeground),
+                "editorLineNumber.foreground" to (scheme.getColor(EditorColors.LINE_NUMBERS_COLOR) ?: muted),
+                "editorWidget.background" to popup,
+                "editorWidget.foreground" to foreground,
+                "editorWidget.border" to border,
+                "editorHoverWidget.background" to popup,
+                "editorHoverWidget.border" to border,
+                "sideBar.background" to background,
+                "sideBar.foreground" to foreground,
+                "sideBarTitle.foreground" to foreground,
+                "sideBarSectionHeader.background" to background,
+                "sideBarSectionHeader.foreground" to foreground,
+                "sideBarSectionHeader.border" to border,
+                "panel.background" to background,
+                "panel.border" to border,
+                "panelTitle.activeForeground" to foreground,
+                "button.background" to buttonBackground,
+                "button.foreground" to named("Button.default.foreground", Color.WHITE),
+                "button.hoverBackground" to lighter(buttonBackground, dark),
+                "button.secondaryBackground" to named("Button.startBackground", background),
+                "button.secondaryForeground" to named("Button.foreground", foreground),
+                "button.secondaryHoverBackground" to lighter(named("Button.startBackground", background), dark),
+                "input.background" to inputBackground,
+                "input.foreground" to named("TextField.foreground", foreground),
+                "input.border" to named("Component.borderColor", border),
+                "input.placeholderForeground" to muted,
+                "inputOption.hoverBackground" to JBUI.CurrentTheme.ActionButton.hoverBackground(),
+                "inputOption.activeBorder" to JBUI.CurrentTheme.Focus.focusColor(),
+                "inputValidation.errorBorder" to named("Component.errorFocusColor", JBColor.RED),
+                "dropdown.background" to named("ComboBox.background", inputBackground),
+                "dropdown.foreground" to named("ComboBox.foreground", foreground),
+                "dropdown.border" to named("Component.borderColor", border),
+                "dropdown.listBackground" to popup,
+                "checkbox.background" to inputBackground,
+                "checkbox.foreground" to foreground,
+                "checkbox.border" to named("Component.borderColor", border),
+                "list.hoverBackground" to JBUI.CurrentTheme.List.Hover.background(true),
+                "list.activeSelectionBackground" to listSelection,
+                "list.activeSelectionForeground" to listForeground,
+                "list.inactiveSelectionBackground" to JBUI.CurrentTheme.List.Selection.background(false),
+                "list.focusOutline" to JBUI.CurrentTheme.Focus.focusColor(),
+                "list.highlightForeground" to link,
+                "badge.background" to named("Counter.background", buttonBackground),
+                "badge.foreground" to named("Counter.foreground", Color.WHITE),
+                "progressBar.background" to named("ProgressBar.progressColor", buttonBackground),
+                "textLink.foreground" to link,
+                "textLink.activeForeground" to JBUI.CurrentTheme.Link.Foreground.HOVERED,
+                "textPreformat.foreground" to editorForeground,
+                "textPreformat.background" to alpha(editorForeground, 0.1),
+                "textCodeBlock.background" to alpha(editorForeground, 0.08),
+                "textBlockQuote.background" to alpha(editorForeground, 0.06),
+                "textBlockQuote.border" to alpha(link, 0.5),
+                "textSeparator.foreground" to border,
+                "toolbar.hoverBackground" to JBUI.CurrentTheme.ActionButton.hoverBackground(),
+                "keybindingLabel.background" to alpha(editorForeground, 0.1),
+                "keybindingLabel.foreground" to foreground,
+                "keybindingLabel.border" to border,
+                "keybindingLabel.bottomBorder" to border,
+                "scrollbarSlider.background" to alpha(foreground, 0.2),
+                "scrollbarSlider.hoverBackground" to alpha(foreground, 0.35),
+                "scrollbarSlider.activeBackground" to alpha(foreground, 0.5),
+                "tab.activeBackground" to editorBackground,
+                "tab.activeForeground" to foreground,
+                "tab.inactiveForeground" to muted,
+                "menu.background" to popup,
+                "menu.foreground" to foreground,
+                "menu.selectionBackground" to listSelection,
+                "menu.selectionForeground" to listForeground,
+                "notifications.background" to popup,
+                "notifications.foreground" to foreground,
+            )
+            return of(dark, colors.mapValues { VsCodeColor.of(it.value) }, fonts, contributed)
+        }
+
+        /** The theme with the colors [sets], [fonts], and everything else from the defaults. */
+        internal fun of(
+            dark: Boolean,
+            sets: Map<String, VsCodeColor>,
+            fonts: Map<String, String>,
+            contributed: Map<String, Map<String, String>>,
+        ): WebviewTheme {
+            val kind = if (dark) "dark" else "light"
+            // Contributed ids become CSS names, so only the characters VS Code allows in them.
+            val contributedDefaults = contributed.filterKeys { it.matches(Regex("[a-zA-Z0-9_.-]+")) }
+                .mapValues { (_, defaults) ->
+                    fun value(kind: String) = defaults[kind]?.let(::JsonPrimitive) ?: JsonNull
+                    JsonObject(mapOf("light" to value("light"), "dark" to value("dark")))
+                }
+            val colors = VsCodeThemeDefaults.resolve(kind, sets, VsCodeThemeDefaults.colors + contributedDefaults)
+            // As VS Code names them: a color's first dot becomes a dash, and a size's every dot.
+            val vars = fonts +
+                colors.map { (id, color) -> "--vscode-${id.replaceFirst('.', '-')}" to color.css } +
+                VsCodeThemeDefaults.sizes(kind).map { (id, size) -> "--vscode-${id.replace('.', '-')}" to size }
             return WebviewTheme(vars, if (dark) "vscode-dark" else "vscode-light", if (dark) "Dark" else "Light")
         }
 

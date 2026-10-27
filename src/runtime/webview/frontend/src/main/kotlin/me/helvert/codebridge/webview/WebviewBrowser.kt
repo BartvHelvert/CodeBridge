@@ -124,7 +124,7 @@ internal class WebviewBrowser(
     fun show(webview: WebviewDto) {
         val previous = page
         page = webview
-        if (previous == null) theme = WebviewTheme.current(inPanel).withContributedColors(webview.themeColors)
+        if (previous == null) theme = WebviewTheme.current(inPanel, webview.themeColors)
         else if (previous.themeColors != webview.themeColors) themeChanged()
         if (previous != null && previous.html == webview.html && previous.htmlVersion == webview.htmlVersion &&
             previous.scripts == webview.scripts &&
@@ -224,7 +224,7 @@ internal class WebviewBrowser(
     fun stopFinding() = browser.cefBrowser.stopFinding(true)
 
     private fun themeChanged() {
-        theme = WebviewTheme.current(inPanel).withContributedColors(page?.themeColors.orEmpty())
+        theme = WebviewTheme.current(inPanel, page?.themeColors.orEmpty())
         browser.setPageBackgroundColor(WebviewTheme.css(background()))
         // A page without scripts has no script to tell, so it is drawn again with the new colours.
         if (page?.scripts == true) browser.cefBrowser.executeJavaScript("window.__codeBridgeTheme && window.__codeBridgeTheme(${theme.json});", address, 0)
