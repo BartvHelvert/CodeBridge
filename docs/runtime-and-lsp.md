@@ -33,7 +33,7 @@ Resolution order is therefore short:
 
 ### How the build produces it
 
-The pin and the SHA-256 of each platform's archive live in `src/runtime/plugin/build.gradle.kts`.
+The pin and the SHA-256 of each platform's archive live in `buildSrc/src/main/kotlin/VsCodium.kt`.
 `downloadRuntime_<platform>` fetches an archive into `vscodium/<version>` of the cache every
 checkout on the machine shares, `<Gradle user home>/codebridge` unless `-PcodebridgeCacheDir` says
 otherwise. It is outside `build`, so `clean` keeps it and a new worktree does not fetch it again.
@@ -385,7 +385,7 @@ Project-startup and endpoint errors also go to the IDE backend's `idea.log`.
 
 | Symptom                                                      | Check or next step                                                                                                                                                                                                                                                        |
 |--------------------------------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| A runtime build hash mismatch while building                 | `downloadRuntime_<platform>` checks each archive against the hash pinned in `build.gradle.kts`. Delete the partial download under `<Gradle user home>/codebridge/vscodium` and build again; do not edit the hash to accept an unknown archive.                                                  |
+| A runtime build hash mismatch while building                 | `downloadRuntime_<platform>` checks each archive against the hash pinned in `VsCodium.kt`. Delete the partial download under `<Gradle user home>/codebridge/vscodium` and build again; do not edit the hash to accept an unknown archive.                                                  |
 | An extension activates but provides nothing                  | Check that the extension is enabled and its activation completed, in the backend `idea.log` and the extension's own log in **CodeBridge Output**. Merely installing a VSIX is insufficient.                                                                                      |
 | `connect EPERM` on a Windows named pipe                      | The host could not connect to the plugin's pipe: something in the environment, such as a sandbox or security software, forbids it.                                                                                                                                        |
 | `spawn EPERM`                                                | The extension could not start its server process.                                                                                                                                                                                                                         |
