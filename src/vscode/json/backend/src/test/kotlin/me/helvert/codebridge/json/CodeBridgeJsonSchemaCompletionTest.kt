@@ -13,9 +13,9 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.readAction
 import com.intellij.openapi.extensions.DefaultPluginDescriptor
 import com.intellij.openapi.extensions.LoadingOrder
-import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.psi.PsiComment
+import com.intellij.psi.PsiDocumentManager
 import com.intellij.psi.util.PsiTreeUtil
 import com.intellij.testFramework.LightProjectDescriptor
 import com.intellij.testFramework.fixtures.CodeInsightTestFixture
@@ -130,7 +130,7 @@ class CodeBridgeJsonSchemaCompletionTest {
             mapOf("type" to "probe", "request" to "launch", "name" to "Launch", "program" to $$"${workspaceFolder}/<program>", "cwd" to $$"${workspaceFolder}"),
             inserted,
         )
-        assertEquals(emptyList(), inspect(".vscode/launch.json", text))
+        assertEquals(emptyList(), inspect())
     }
 
     @Test
@@ -291,7 +291,6 @@ class CodeBridgeJsonSchemaCompletionTest {
             fixture.lookup.currentItem = item
             fixture.finishLookup(Lookup.NORMAL_SELECT_CHAR)
             result = fixture.editor.document.text to fixture.editor.selectionModel.selectedText
-            FileDocumentManager.getInstance().saveAllDocuments()
         }
         return result
     }
@@ -303,6 +302,16 @@ class CodeBridgeJsonSchemaCompletionTest {
      */
     private fun inspect(path: String, text: String): List<String> {
         onEdt { open(path, text) }
+        return inspect()
+    }
+
+    /**
+     * What the schema inspection reports in the file open now. Inspected in place rather than
+     * written out again: on the Windows runners, rewriting a file the test had just saved failed
+     * with "being used by another process", even with the temporary directory excluded from Defender.
+     */
+    private fun inspect(): List<String> {
+        onEdt { PsiDocumentManager.getInstance(fixture.project).commitAllDocuments() }
         val file = fixture.file
         return runBlocking {
             readAction {
