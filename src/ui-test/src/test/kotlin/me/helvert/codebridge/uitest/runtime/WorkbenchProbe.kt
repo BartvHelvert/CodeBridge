@@ -22,6 +22,9 @@ internal class WorkbenchProbe(val driver: Driver, val project: Path) {
     fun command(name: String): String? = servers.executeCommandForTest(name, "[]")
 }
 
+/** A balloon: a message an extension shows, or one of the IDE's own notifications. */
+internal const val BALLOON = $$"//div[@javaclass='com.intellij.ui.BalloonImpl$MyComponent']"
+
 /** Keeps each workflow's project, installation and logs isolated, with one backend/client pair. */
 internal fun withWorkbenchProbe(
     name: String,

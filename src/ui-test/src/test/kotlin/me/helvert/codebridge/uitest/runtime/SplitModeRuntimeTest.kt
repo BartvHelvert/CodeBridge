@@ -14,6 +14,7 @@ import me.helvert.codebridge.uitest.awaitProbeValue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 @ExtendWith(RemoteDevRun::class)
 class SplitModeRuntimeTest {
@@ -46,6 +47,16 @@ class SplitModeRuntimeTest {
             awaitProbeValue("output after rerunning the task", { console.text }) { it.contains("PROBE TASK READY") }
             driver.act("Stop", console)
             awaitProbeValue("the rerun task stopped", { stateContains("taskClosed", 2) }) { it }
+
+            // A launch the extension's own provider cancels, after reading what was substituted, does
+            // not start and is no error -- Oracle's Java extension starts one per batch of settings.
+            assertEquals("false", command("probe.startCanceledDebug"))
+            val state = command("probe.runtimeState").orEmpty()
+            assertTrue(Regex("\"substituted\":\"[^\"$]+\"").containsMatchIn(state), "provider never saw the substituted program: $state")
+            repeat(6) {
+                assertTrue(frame.xx(BALLOON).list().none { it.hasSubtext("Error running") }, "an error shown for a canceled launch")
+                Thread.sleep(500)
+            }
 
             assertEquals("true", command("probe.startDebug"))
             // The variables view is not always the only debugger tree on screen; the rows of all of them

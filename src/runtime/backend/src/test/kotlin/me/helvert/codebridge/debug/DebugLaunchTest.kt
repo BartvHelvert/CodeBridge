@@ -235,7 +235,7 @@ class DebugLaunchTest {
         assertEquals("world fast", resolved["a"]!!.jsonPrimitive())
         assertEquals(listOf("name", "mode"), asked)
 
-        assertFailsWith<DebugLaunch.InputCanceledException> {
+        assertFailsWith<DebugLaunch.LaunchCanceledException> {
             DebugLaunch.substitute(json($$"""{ "p": "${input:pid}" }"""), workspace, buildJsonObject { },
                 input = DebugLaunch.inputs(definitions, prompts))
         }

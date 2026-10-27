@@ -129,8 +129,4 @@ class SplitModeWindowTest {
         }) { items -> items.any { it.contains(item) } }
         return list!!
     }
-
-    private companion object {
-        const val BALLOON = $$"//div[@javaclass='com.intellij.ui.BalloonImpl$MyComponent']"
-    }
 }
