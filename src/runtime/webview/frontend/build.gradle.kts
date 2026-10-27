@@ -22,3 +22,13 @@ dependencies {
 }
 
 tasks.test { useJUnitPlatform() }
+
+/** VS Code's theme colors and sizes with their defaults, which every page gets: see `VsCodeThemeDefaults`. */
+val sharedCacheDirectory: File by rootProject.extra
+val generateVsCodeTheme = tasks.register<GenerateVsCodeTheme>("generateVsCodeTheme") {
+    url = VsCodium.url(VsCodium.webAsset)
+    sha256 = VsCodium.webPackage.second
+    archive = layout.projectDirectory.file(VsCodium.downloads(sharedCacheDirectory).resolve(VsCodium.webAsset).path)
+    outputDirectory = layout.buildDirectory.dir("generated/vscode-theme")
+}
+sourceSets.main { resources.srcDir(generateVsCodeTheme) }

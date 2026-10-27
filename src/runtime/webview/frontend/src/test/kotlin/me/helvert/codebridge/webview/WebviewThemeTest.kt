@@ -3,8 +3,14 @@ package me.helvert.codebridge.webview
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNull
 
 class WebviewThemeTest {
+    private fun hex(text: String) = VsCodeColor.hex(text)!!
+
+    private fun theme(dark: Boolean, sets: Map<String, String>, contributed: Map<String, Map<String, String>> = emptyMap()) =
+        WebviewTheme.of(dark, sets.mapValues { hex(it.value) }, emptyMap(), contributed)
+
     @Test
     fun `extension colors follow the frontend theme and resolve aliases`() {
         val colors = mapOf(
@@ -12,12 +18,11 @@ class WebviewThemeTest {
             "example.alias" to mapOf("dark" to "gitlens.graphScrollMarkerHeadColor"),
             "example.link" to mapOf("dark" to "textLink.foreground"),
         )
-        val dark = WebviewTheme(mapOf("--vscode-textLink-foreground" to "#abcdef"), "vscode-dark", "Dark")
-            .withContributedColors(colors)
+        val dark = theme(true, mapOf("textLink.foreground" to "#abcdef"), colors)
         assertEquals("#59cf84", dark.vars["--vscode-gitlens-graphScrollMarkerHeadColor"])
         assertEquals("#59cf84", dark.vars["--vscode-example-alias"])
         assertEquals("#abcdef", dark.vars["--vscode-example-link"])
-        val light = WebviewTheme(emptyMap(), "vscode-light", "Light").withContributedColors(colors)
+        val light = theme(false, emptyMap(), colors)
         assertEquals("#1e9f4d", light.vars["--vscode-gitlens-graphScrollMarkerHeadColor"])
     }
 
@@ -31,9 +36,39 @@ class WebviewThemeTest {
             "bad;id" to mapOf("dark" to "#fff"),
             "foreground" to mapOf("dark" to "#000"),
         )
-        val theme = WebviewTheme(mapOf("--vscode-foreground" to "#fff"), "vscode-dark", "Dark")
-            .withContributedColors(colors)
-        assertEquals(mapOf("--vscode-foreground" to "#fff"), theme.vars)
-        assertFalse(theme.css.contains("background"))
+        val theme = theme(true, mapOf("foreground" to "#fff"), colors)
+        assertEquals("#ffffff", theme.vars["--vscode-foreground"])
+        for (name in listOf("a", "b", "missing", "invalid", "bad;id")) assertNull(theme.vars["--vscode-$name"])
+        assertFalse(theme.css.contains("background: red"))
+    }
+
+    @Test
+    fun `colors the IDE does not set follow VS Code's defaults`() {
+        val sets = mapOf("list.activeSelectionBackground" to "#0060c0", "list.activeSelectionForeground" to "#ffffff")
+        // `banner.background` is the selection in a dark theme, and the selection darkened by 30% in a light one.
+        assertEquals("#0060c0", theme(true, sets).vars["--vscode-banner-background"])
+        assertEquals("#004386", theme(false, sets).vars["--vscode-banner-background"])
+        assertEquals("#ffffff", theme(false, sets).vars["--vscode-banner-foreground"])
+        // Defaults of its own where nothing is set: `editorError.foreground`.
+        assertEquals("#f14c4c", theme(true, emptyMap()).vars["--vscode-editorError-foreground"])
+    }
+
+    @Test
+    fun `transformed defaults are computed as VS Code computes them`() {
+        val theme = theme(true, mapOf("checkbox.background" to "#000000", "checkbox.foreground" to "#ffffff"))
+        // A mix, named as VS Code names it: only the first dot becomes a dash.
+        assertEquals("#545454", theme.vars["--vscode-checkbox-disabled.background"])
+        // A transparent color.
+        assertEquals("rgba(155, 185, 85, 0.2)", theme.vars["--vscode-diffEditor-insertedLineBackground"])
+    }
+
+    @Test
+    fun `colors without a default for the theme's kind are left out`() {
+        assertNull(theme(true, emptyMap()).vars["--vscode-contrastBorder"])
+    }
+
+    @Test
+    fun `sizes are there too`() {
+        assertEquals("6px", theme(true, emptyMap()).vars["--vscode-cornerRadius-medium"])
     }
 }
