@@ -1,12 +1,5 @@
 import org.jetbrains.intellij.platform.gradle.tasks.BuildPluginTask
 import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask
-import java.io.InputStream
-import java.io.OutputStream
-import java.net.URI
-import java.nio.file.Files
-import java.nio.file.StandardCopyOption
-import java.security.DigestOutputStream
-import java.security.MessageDigest
 
 /**
  * CodeBridge Runtime: the extension host, pinned and shipped per platform, and everything that draws
@@ -116,77 +109,17 @@ tasks.verifyPlugin {
     }
 }
 
-/**
- * The extension host the plugin runs on: VSCodium's remote-extension-host package, pinned.
- *
- * Changing the version is a deliberate, tested upgrade -- extension-host rpcIds drift between builds
- * and a mismatch misroutes calls silently -- and changing it means replacing every hash below with
- * the `.sha256` published beside each asset. The hashes are pinned here rather than fetched with the
- * archive, so a replaced release asset fails the build instead of shipping.
- */
-val vscodiumVersion = "1.143.17183"
-val vscodiumPackages = mapOf(
-    "win32-x64" to "a21426e7d2f914c601264c5fb896dda36fed24bd3e363b0f1ed51f532a331216",
-    "linux-x64" to "34dbad673e150f9a5bc6d1190754afcbc4bc173b71922300452eaef3f5cda6ed",
-    "linux-arm64" to "b2c53fa9c515505a85d705a006338c756f6028bcc579134e95d19966e7125080",
-    "darwin-x64" to "9ae7cd592c3b9ce2215e2c7d2b19c1164be31425149d27e703278d4301333036",
-    "darwin-arm64" to "9676699d1ad3ff731a59e0c8645a4f7ac56c9f2a752629e77be96ce8b70500fb",
-)
-
-/**
- * The same VSCodium build's web server package, for the built-in extensions VS Code's workbench
- * loads rather than its extension host: the ones that name languages, `java` for `.java` among
- * them. The REH package leaves them out, having no editor of its own; the web package carries them
- * for the browser's. Identical on every platform, so one platform's package serves all.
- */
-val vscodiumWebPackage = "linux-x64" to "3ac6b8d71b147f0c55d1a230c6654883b401041018b44e9defa18a71c946f73e"
-
-/** Fetches one file and refuses it unless it has the expected SHA-256. */
-@DisableCachingByDefault(because = "A download; keeping a second copy in the build cache gains nothing")
-abstract class DownloadVerified : DefaultTask() {
-    @get:Input abstract val url: Property<String>
-    @get:Input abstract val sha256: Property<String>
-    @get:OutputFile abstract val archive: RegularFileProperty
-
-    @TaskAction
-    fun download() {
-        val target = archive.get().asFile
-        // Gradle reruns this whenever the build script changes, since the task class lives in it.
-        // Hashing a file already here is far cheaper than fetching it again.
-        if (target.isFile && copyHashing(target.inputStream(), OutputStream.nullOutputStream()) == sha256.get()) return
-        val partial = File(target.path + ".part")
-        target.parentFile.mkdirs()
-        val actual = copyHashing(URI(url.get()).toURL().openStream(), partial.outputStream())
-        if (actual != sha256.get()) {
-            partial.delete()
-            throw GradleException("Checksum mismatch for ${url.get()}: expected ${sha256.get()} but got $actual")
-        }
-        Files.move(partial.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
-    }
-
-    /** Copies [input] to [output], closing both, and returns the SHA-256 of what passed through. */
-    private fun copyHashing(input: InputStream, output: OutputStream): String {
-        val digest = MessageDigest.getInstance("SHA-256")
-        input.use { source -> DigestOutputStream(output, digest).use { source.copyTo(it) } }
-        return digest.digest().joinToString("") { "%02x".format(it) }
-    }
-}
-
-/**
- * Downloads go to the cache every checkout shares (see the root build script), not `build`, so
- * neither `clean` nor a new worktree costs five 113 MB fetches. Version-qualified, so a bumped pin
- * cannot be confused with the previous one; the checksum keeps a checkout from using another's
- * half-written download.
- */
+/** Downloads go to the cache every checkout shares: see [VsCodium.downloads]. */
 val sharedCacheDirectory: File by rootProject.extra
-val vscodiumDownloads = layout.projectDirectory.dir(sharedCacheDirectory.resolve("vscodium/$vscodiumVersion").path)
+val vscodiumDownloads = layout.projectDirectory.dir(VsCodium.downloads(sharedCacheDirectory).path)
+val vscodiumVersion = VsCodium.VERSION
 
-val downloadRuntime = vscodiumPackages.mapValues { (platform, hash) ->
+val downloadRuntime = VsCodium.packages.mapValues { (platform, hash) ->
     tasks.register<DownloadVerified>("downloadRuntime_$platform") {
         group = "distribution"
         description = "Downloads the VSCodium $vscodiumVersion extension host for $platform."
         val asset = "vscodium-reh-$platform-$vscodiumVersion.tar.gz"
-        url = "https://github.com/VSCodium/vscodium/releases/download/$vscodiumVersion/$asset"
+        url = VsCodium.url(asset)
         sha256 = hash
         archive = vscodiumDownloads.file(asset)
     }
@@ -195,11 +128,9 @@ val downloadRuntime = vscodiumPackages.mapValues { (platform, hash) ->
 val downloadWorkbenchExtensions = tasks.register<DownloadVerified>("downloadWorkbenchExtensions") {
     group = "distribution"
     description = "Downloads the VSCodium $vscodiumVersion web server, for its workbench's built-in extensions."
-    val (platform, hash) = vscodiumWebPackage
-    val asset = "vscodium-reh-web-$platform-$vscodiumVersion.tar.gz"
-    url = "https://github.com/VSCodium/vscodium/releases/download/$vscodiumVersion/$asset"
-    sha256 = hash
-    archive = vscodiumDownloads.file(asset)
+    url = VsCodium.url(VsCodium.webAsset)
+    sha256 = VsCodium.webPackage.second
+    archive = vscodiumDownloads.file(VsCodium.webAsset)
 }
 
 /**
