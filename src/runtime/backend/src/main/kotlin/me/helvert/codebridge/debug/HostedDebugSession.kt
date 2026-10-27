@@ -119,7 +119,7 @@ class HostedDebugSession(
         val beforeSubstitution = config
         config = substitute(config) { command ->
             executeCommand(extensions.first().manifest.contributes.debugger(type)?.variables?.get(command) ?: command,
-                beforeSubstitution, checkCanceled) ?: throw DebugLaunch.InputCanceledException("command:$command")
+                beforeSubstitution, checkCanceled) ?: throw DebugLaunch.LaunchCanceledException("command:$command")
         }
         for (provider in providers.filter { (it.type == type || it.type == "*") && it.afterSubstitution }) {
             config = resolve(provider, DebugService.RESOLVE_SUBSTITUTED, config, checkCanceled)
@@ -233,7 +233,9 @@ class HostedDebugSession(
         val result = await(check) {
             host.call(DebugService.EXT_HOST, method, "[${provider.handle},${ExtensionHostInitData.fileUri(workspace)},$config,null]")
         }
-        require(result.isNotEmpty() && result != "null") { "Extension canceled debug configuration resolution" }
+        // Resolved to nothing: the provider canceled the launch, as Oracle's Java extension does for the
+        // configuration it starts only to have its settings' variables substituted.
+        if (result.isEmpty() || result == "null") throw DebugLaunch.LaunchCanceledException("provider:${provider.type}")
         return Json.parseToJsonElement(result).jsonObject
     }
 

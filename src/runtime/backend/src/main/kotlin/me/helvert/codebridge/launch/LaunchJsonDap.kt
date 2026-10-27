@@ -1,5 +1,6 @@
 package me.helvert.codebridge.launch
 
+import com.intellij.execution.CantRunException
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.ExecutionResult
 import com.intellij.execution.configurations.RunProfile
@@ -191,12 +192,12 @@ class LaunchJsonDebugAdapterSupportProvider : DebugAdapterSupportProvider<Launch
                     CodeBridgeChildSessions.stop(session.id)
                     DebugLaunch.postDebugTask(session.configuration)?.let { postDebugTask(it, folder) }
                 }
-            } catch (canceled: DebugLaunch.InputCanceledException) {
+            } catch (canceled: DebugLaunch.LaunchCanceledException) {
                 session.close()
                 terminal.close()
-                // Not an error, as in VS Code: the run just does not start. A cancellation is what
-                // IntelliJ ends a run on without reporting it.
-                throw CancellationException(canceled.message)
+                // Not an error, as in VS Code: the run just does not start. This is what IntelliJ ends
+                // a run on without reporting it; a cancellation passes the DAP layer and is reported.
+                throw CantRunException.CustomProcessedCantRunException()
             } catch (error: Throwable) {
                 session.close()
                 terminal.close()

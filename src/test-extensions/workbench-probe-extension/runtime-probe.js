@@ -24,6 +24,20 @@ exports.install = context => {
             name: 'Probe UI debug', type: 'codebridge-ui-probe', request: 'launch',
             program: vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, 'example.codebridgeactions').fsPath,
         })));
+    // As Oracle's Java extension has VS Code substitute its settings' variables: a launch its own
+    // provider cancels once it has read the substituted configuration.
+    context.subscriptions.push(vscode.debug.registerDebugConfigurationProvider('codebridge-ui-probe', {
+        resolveDebugConfigurationWithSubstitutedVariables: (folder, config) => {
+            if (!config.probeCanceled) return config;
+            state.substituted = config.program;
+            return undefined;
+        },
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('probe.startCanceledDebug', async () =>
+        vscode.debug.startDebugging(vscode.workspace.workspaceFolders[0], {
+            name: 'Probe canceled debug', type: 'codebridge-ui-probe', request: 'launch',
+            program: '${workspaceFolder}', probeCanceled: true,
+        }, {noDebug: true})));
 };
 
 /** A deterministic DAP peer: stop at entry, step one line, resume, pause, and disconnect. */

@@ -309,10 +309,11 @@ object DebugLaunch {
     }
 
     /**
-     * The user backed out of a launch: dismissed an input, or a `${command:...}` -- a process
-     * picker -- answered nothing, which VS Code takes as "do not start" rather than as an error.
+     * A launch that is not to start, which VS Code takes as "do not start" rather than as an error:
+     * the user dismissed an input, a `${command:...}` -- a process picker -- answered nothing, or an
+     * extension's debug configuration provider resolved the configuration to nothing.
      */
-    class InputCanceledException(id: String) : RuntimeException("The launch was canceled at '$id'")
+    class LaunchCanceledException(id: String) : RuntimeException("The launch was canceled at '$id'")
 
     /**
      * `${input:id}` for one launch: each input is asked once, however often it is used, in the
@@ -326,7 +327,7 @@ object DebugLaunch {
                     is InputDefinition.PromptString -> prompts.text(input)
                     is InputDefinition.PickString -> prompts.pick(input)
                     is InputDefinition.Command -> prompts.command(input)
-                } ?: throw InputCanceledException(id)
+                } ?: throw LaunchCanceledException(id)
                 answer.also { answers[id] = it }
             }
         }
