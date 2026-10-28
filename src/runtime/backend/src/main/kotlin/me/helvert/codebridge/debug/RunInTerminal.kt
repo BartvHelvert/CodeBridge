@@ -91,6 +91,17 @@ class RunInTerminal(
         } catch (_: Exception) {
             KillableProcessHandler(plain)
         }
+        LOG.info("runInTerminal: started ${command.first()} with ${command.size - 1} argument(s)${if (handler is KillableColoredProcessHandler) " on a pseudo-terminal" else ""}")
+        watch(handler, command.first())
+        return RunInTerminalResponse(processId = handler.process.pid().toInt())
+    }
+
+    /**
+     * Hands what [handler] prints to [output] and keeps it until it has ended and been read.
+     *
+     * Internal so that a test can watch a program whose text arrives after it has exited.
+     */
+    internal fun watch(handler: KillableProcessHandler, program: String) {
         val started = System.currentTimeMillis()
         val read = java.util.concurrent.atomic.AtomicInteger()
         handler.addProcessListener(object : ProcessListener {
@@ -103,7 +114,7 @@ class RunInTerminal(
 
             override fun processTerminated(event: ProcessEvent) {
                 LOG.info(
-                    "runInTerminal: ${command.first()} ended with exit code ${event.exitCode} after ${System.currentTimeMillis() - started} ms, " +
+                    "runInTerminal: $program ended with exit code ${event.exitCode} after ${System.currentTimeMillis() - started} ms, " +
                             "${read.get()} character(s) read from ${handler.process.javaClass.simpleName}"
                 )
                 processes.remove(handler)
@@ -112,9 +123,7 @@ class RunInTerminal(
         })
         processes.add(handler)
         ended[handler] = CompletableDeferred()
-        LOG.info("runInTerminal: started ${command.first()} with ${command.size - 1} argument(s)${if (handler is KillableColoredProcessHandler) " on a pseudo-terminal" else ""}")
         handler.startNotify()
-        return RunInTerminalResponse(processId = handler.process.pid().toInt())
     }
 
     /**
@@ -167,15 +176,21 @@ class RunInTerminal(
      * on its way out of the terminal, a few milliseconds behind. Quiet counts as done because what
      * runs in the terminal need not end with the program: CodeLLDB's `codelldb-launch` stays until
      * the session is disconnected, which waiting for would hold every run back the full grace.
+     *
+     * Once every program has exited, though, neither rule applies, and what they printed is waited
+     * for up to [DRAIN_MILLIS]: see [exited].
      */
     fun finished(): Deferred<Unit> {
         val since = System.currentTimeMillis()
-        val running = ended.values.toList()
+        val running = ended.entries.toList()
         return scope.async {
-            val allEnded = launch { running.joinAll() }
+            val allEnded = launch { running.forEach { it.value.join() } }
             while (allEnded.isActive) {
                 val now = System.currentTimeMillis()
-                if (now - maxOf(since, lastOutput) >= QUIET_MILLIS || now - since >= GRACE_MILLIS) {
+                val waited = now - since
+                val givenUp = if (running.all { exited(it.key) }) waited >= DRAIN_MILLIS
+                else now - maxOf(since, lastOutput) >= QUIET_MILLIS || waited >= GRACE_MILLIS
+                if (givenUp) {
                     allEnded.cancel()
                     break
                 }
@@ -194,19 +209,34 @@ class RunInTerminal(
      * Not at once: a short program has often finished by then with its last lines still in the
      * terminal -- the session ends as soon as the adapter sees the program exit, tens of
      * milliseconds after it started -- and stopping the terminal there lost everything it printed.
-     * What finishes within [GRACE_MILLIS] is read to the end; what is still running after that is
-     * stopped.
+     * What finishes within [GRACE_MILLIS] is read to the end, for up to [DRAIN_MILLIS] (see
+     * [exited]); what is still running after the grace is stopped.
      */
     override fun close() {
         scope.cancel()
-        val deadline = System.currentTimeMillis() + GRACE_MILLIS
+        val start = System.currentTimeMillis()
         for (process in processes) {
-            val left = deadline - System.currentTimeMillis()
+            val left = start + GRACE_MILLIS - System.currentTimeMillis()
+            if (left > 0) process.waitFor(left)
+        }
+        for (process in processes) {
+            if (!exited(process)) continue
+            val left = start + DRAIN_MILLIS - System.currentTimeMillis()
             if (left > 0) process.waitFor(left)
         }
         processes.forEach { if (!it.isProcessTerminated) it.destroyProcess() }
         processes.clear()
     }
+
+    /**
+     * Whether [handler]'s program has exited, though what it printed may not have been read yet.
+     *
+     * The platform reports a program ended only once its output is read to the end, and on Windows
+     * that can be well after it exited: the pseudo-terminal delivered a CI runner's `echo` half a
+     * second after the 2 s grace, with the program long gone, and the text was lost. A program that
+     * has exited can no longer hold the terminal open, so what is left of its output is waited for.
+     */
+    private fun exited(handler: KillableProcessHandler): Boolean = !handler.process.isAlive
 
     /**
      * [commandLine] on a pseudo-terminal wide enough not to wrap a line, its escape sequences turned
@@ -233,6 +263,8 @@ class RunInTerminal(
     companion object {
         private val LOG = Logger.getInstance(RunInTerminal::class.java)
         private const val GRACE_MILLIS = 2_000L
+        /** How long the output of a program that has exited is waited for: generous, but still bounded. */
+        private const val DRAIN_MILLIS = 10_000L
         private const val QUIET_MILLIS = 300L
         private const val CHECK_MILLIS = 50L
         private const val SHOW_SECONDS = 30L

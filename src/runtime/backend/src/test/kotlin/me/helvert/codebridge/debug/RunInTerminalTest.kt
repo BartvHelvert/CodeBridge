@@ -1,13 +1,20 @@
 package me.helvert.codebridge.debug
 
+import com.intellij.execution.process.KillableProcessHandler
 import com.intellij.testFramework.fixtures.IdeaTestFixtureFactory
+import com.intellij.util.io.BaseOutputReader
 import com.jetbrains.dap.protocol.RunInTerminalRequestArguments
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
+import java.io.InputStream
+import java.io.OutputStream
+import java.io.PipedInputStream
+import java.io.PipedOutputStream
 import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
@@ -123,5 +130,56 @@ class RunInTerminalTest {
             ) }
         }
         assertTrue(written.contains("last-words"), "What it printed arrives: '$written'")
+    }
+
+    /**
+     * On a slow Windows runner the pseudo-terminal delivered a finished program's last line half a
+     * second after the grace, and closing lost it. A program that has exited is read to the end.
+     */
+    @Test
+    fun `closing reads a program that has exited to the end, however late its text arrives`() {
+        val written = StringBuffer()
+        RunInTerminal { text, _ -> written.append(text) }.use { terminal ->
+            terminal.watch(exitedWithLateOutput("last-words", lateMillis = 3_000), "late")
+        }
+        assertTrue(written.contains("last-words"), "What it printed arrives: '$written'")
+    }
+
+    @Test
+    fun `the session's end waits for what a program that has exited is still printing`() {
+        val written = StringBuffer()
+        RunInTerminal { text, _ -> written.append(text) }.use { terminal ->
+            terminal.watch(exitedWithLateOutput("last-words", lateMillis = 1_000), "late")
+            runBlocking { withTimeout(20.seconds) { terminal.finished().await() } }
+            assertTrue(written.contains("last-words"), "The program's text comes before the session's end: '$written'")
+        }
+    }
+
+    /**
+     * A program that has already exited, whose terminal delivers [text] [lateMillis] later, and only
+     * then reports the end of its output. Read blocking, as a pseudo-terminal is.
+     */
+    private fun exitedWithLateOutput(text: String, lateMillis: Long): KillableProcessHandler {
+        val stdout = PipedInputStream()
+        val terminal = PipedOutputStream(stdout)
+        thread(isDaemon = true) {
+            Thread.sleep(lateMillis)
+            terminal.use { it.write(text.toByteArray()) }
+        }
+        val process = object : Process() {
+            override fun getInputStream(): InputStream = stdout
+            override fun getErrorStream(): InputStream = InputStream.nullInputStream()
+            override fun getOutputStream(): OutputStream = OutputStream.nullOutputStream()
+            override fun waitFor() = 0
+            override fun exitValue() = 0
+            override fun isAlive() = false
+            override fun destroy() = Unit
+        }
+        return object : KillableProcessHandler(process, "late") {
+            override fun readerOptions(): BaseOutputReader.Options = BaseOutputReader.Options.forTerminalPtyProcess()
+
+            // There is no process to stop; stopping it is what loses the text, which the test asserts.
+            override fun destroyProcessImpl() = Unit
+        }
     }
 }
