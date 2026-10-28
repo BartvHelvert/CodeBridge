@@ -233,8 +233,9 @@ class RunInTerminal(
      *
      * The platform reports a program ended only once its output is read to the end, and on Windows
      * that can be well after it exited: the pseudo-terminal delivered a CI runner's `echo` half a
-     * second after the 2 s grace, with the program long gone, and the text was lost. A program that
-     * has exited can no longer hold the terminal open, so what is left of its output is waited for.
+     * second after the 2 s grace, with the program long gone, and the text was lost. What is left of
+     * an exited program's output is waited for instead -- within [DRAIN_MILLIS], in case something it
+     * started keeps the terminal open.
      */
     private fun exited(handler: KillableProcessHandler): Boolean = !handler.process.isAlive
 
