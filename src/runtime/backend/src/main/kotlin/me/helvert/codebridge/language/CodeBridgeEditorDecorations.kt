@@ -174,8 +174,12 @@ class CodeBridgeEditorDecorations(private val project: Project, private val scop
      * decorated thing has really moved, the extension names its new place, and that is a change.
      */
     private fun set(applied: TextEditorDecorations.Applied) {
-        val file = features.fileOfEditor(applied.editorId) ?: return
-        val type = types[applied.key] ?: return LOG.debug("Decorations of a type never registered: ${applied.key}")
+        // Logged at info, as are the other calls dropped before drawing: rare, and otherwise a
+        // decoration that never appears leaves nothing in the log to say where it went.
+        val file = features.fileOfEditor(applied.editorId)
+            ?: return LOG.info("Decorations '${applied.key}' for editor ${applied.editorId}, which shows no mirrored file; ignored")
+        val type = types[applied.key]
+            ?: return LOG.info("Decorations of a type never registered: ${applied.key}; ignored")
         set(file, applied, type)
     }
 
@@ -197,7 +201,8 @@ class CodeBridgeEditorDecorations(private val project: Project, private val scop
 
     private fun set(file: VirtualFile, applied: TextEditorDecorations.Applied, type: TextEditorDecorations.Type) {
         onEdt {
-            val document = FileDocumentManager.getInstance().getCachedDocument(file) ?: return@onEdt
+            val document = FileDocumentManager.getInstance().getCachedDocument(file)
+                ?: return@onEdt LOG.info("Decorations '${applied.key}' on ${file.name}, which has no document loaded; ignored")
             if (lastCalls.put(file to applied.key, applied.decorations) == applied.decorations) {
                 return@onEdt LOG.debug("Decorations '${applied.key}' on ${file.name} repeat the last call; kept where the text moved them")
             }
