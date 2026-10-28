@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import me.helvert.codebridge.language.CodeBridgeLanguageFileTypes
 import me.helvert.codebridge.manifest.VsixArchive
 import java.nio.file.Path
 import java.util.*
@@ -36,6 +37,8 @@ class ExtensionInstallationService(scope: CoroutineScope) {
 
     private fun changed() {
         revision.update { it + 1 }
+        // File types first, and not through the topic: see CodeBridgeLanguageFileTypes.extensionsChanged.
+        CodeBridgeLanguageFileTypes.getInstance().extensionsChanged()
         ApplicationManager.getApplication().messageBus.syncPublisher(CHANGED).extensionsChanged()
     }
 

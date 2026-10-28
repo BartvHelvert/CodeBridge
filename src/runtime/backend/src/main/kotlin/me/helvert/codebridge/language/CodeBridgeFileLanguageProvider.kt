@@ -31,6 +31,17 @@ interface CodeBridgeFileLanguageProvider {
      */
     fun claimed(fileType: FileType) = Unit
 
+    /** Off the EDT, before [extensionsApplied]: for anything that should be waited for there and not in the write action. */
+    fun prepareForExtensions() = Unit
+
+    /**
+     * Picks up [CodeBridgeLanguageFileTypes.extensions], which has just changed.
+     *
+     * Called in the write action and file-type change in which the claims change too, so that no
+     * file is ever seen released by the claims and still read by a provider, or the other way round.
+     */
+    fun extensionsApplied() = Unit
+
     companion object {
         val EP_NAME: ExtensionPointName<CodeBridgeFileLanguageProvider> =
             ExtensionPointName("me.helvert.codebridge.fileLanguage")

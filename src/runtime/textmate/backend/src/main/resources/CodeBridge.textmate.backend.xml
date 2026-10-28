@@ -15,8 +15,4 @@
     <extensions defaultExtensionNs="me.helvert.codebridge">
         <fileLanguage implementation="me.helvert.codebridge.textmate.CodeBridgeTextMateFileLanguage"/>
     </extensions>
-    <applicationListeners>
-        <listener class="me.helvert.codebridge.textmate.CodeBridgeTextMateInstallationListener"
-                  topic="me.helvert.codebridge.extensions.ExtensionInstallationListener"/>
-    </applicationListeners>
 </idea-plugin>

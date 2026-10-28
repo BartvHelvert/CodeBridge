@@ -2,18 +2,32 @@ package me.helvert.codebridge.language
 
 import com.intellij.lang.Language
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.EDT
+import com.intellij.openapi.application.ModalityState
+import com.intellij.openapi.application.WriteAction
+import com.intellij.openapi.application.asContextElement
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.fileTypes.FileType
 import com.intellij.openapi.fileTypes.FileTypeManager
 import com.intellij.openapi.fileTypes.PlainTextLanguage
 import com.intellij.openapi.fileTypes.UnknownFileType
+import com.intellij.openapi.fileTypes.ex.FileTypeManagerEx
+import com.intellij.openapi.progress.ProcessCanceledException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.consumeEach
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import me.helvert.codebridge.extensions.ExtensionInstallationService
 import me.helvert.codebridge.extensions.InstalledExtension
 import me.helvert.codebridge.manifest.LanguageContribution
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * Gives files an installed extension claims the type of the language it claims them as.
@@ -38,23 +52,31 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * Each contributed language gets a [CodeBridgeLanguageFileType] of its own, so the status bar names the
  * language instead of calling every contributed file Plain Text or TextMate.
+ *
+ * A change to the store reaches file types in one step: the claims are rebuilt and every
+ * [CodeBridgeFileLanguageProvider] reloads, inside a single file-type change in a write action, and
+ * both read the same list of extensions, [extensions]. Done apart, they left a gap: disabling an
+ * extension released its files at once while TextMate kept the grammar until its own reload, and a
+ * file typed in between by `FileTypeManager.isFileOfType` -- which runs content detection without
+ * asking `TextMateFileType` first -- was detected as `textmate`. The platform keeps that answer in
+ * the file's user data and no file-type change clears it, so the file stayed `textmate`, without a
+ * grammar, for the rest of the session.
  */
 @Service(Service.Level.APP)
-class CodeBridgeLanguageFileTypes {
+class CodeBridgeLanguageFileTypes(scope: CoroutineScope) {
 
     /**
-     * What the installed extensions claim, as of one revision of the extension store.
+     * What the enabled extensions claim, as of the last time the store's contents were applied.
      *
      * Rebuilt rather than re-read: [ExtensionInstallationService.list] takes a file lock and parses
      * every installed manifest, and this is asked on the file type path, which the platform walks
-     * for every file it indexes. The revision counter the store already keeps is what makes one
-     * build last until something is installed, enabled or removed.
+     * for every file it indexes. A build lasts until something is installed, enabled or removed.
      *
      * A list and not an index by extension. It is short -- the languages of the extensions the user
      * installed -- and sharing [matches] with the rest of the plugin matters more than the scan:
      * the file the host is told about and the file the editor types must be the same file.
      */
-    private class Claims(val revision: Long, val claims: List<Claim>) {
+    private class Claims(val extensions: List<InstalledExtension>, val claims: List<Claim>) {
         /** The closest claim, as [HostedLanguageServers] opens the file as its language; the first among equals. */
         fun claiming(name: String): Claim? = claims
             .mapNotNull { claim -> claim.contribution.closeness(name)?.let { claim to it } }
@@ -71,7 +93,7 @@ class CodeBridgeLanguageFileTypes {
      */
     private data class Claim(val contribution: LanguageContribution, val light: Path?, val dark: Path?)
 
-    @Volatile private var claims: Claims? = null
+    private val claims = AtomicReference<Claims?>()
 
     /**
      * One type per language and backing language, kept because the platform compares file types by
@@ -84,6 +106,64 @@ class CodeBridgeLanguageFileTypes {
      * itself, and held while the reader is told: see [announce].
      */
     private val announced = HashSet<String>()
+
+    /** Store changes waiting to be applied off the EDT; see [extensionsChanged]. */
+    private val applies = Channel<Unit>(Channel.CONFLATED)
+
+    init {
+        scope.launch(Dispatchers.IO) {
+            applies.consumeEach {
+                try {
+                    for (provider in CodeBridgeFileLanguageProvider.EP_NAME.extensionsIfPointIsRegistered) {
+                        provider.prepareForExtensions()
+                    }
+                    // Waited for, so applies stay one after another.
+                    withContext(Dispatchers.EDT + ModalityState.nonModal().asContextElement()) {
+                        WriteAction.run<RuntimeException>(::apply)
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (cancelled: ProcessCanceledException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    LOG.warn("Could not apply changed extensions to file types", failure)
+                }
+            }
+        }
+    }
+
+    /**
+     * The enabled extensions that files are claimed for. Readers that must agree with the claims, such
+     * as the TextMate bundles, read this and not the store, which can be a change ahead of it.
+     */
+    fun extensions(): List<InstalledExtension> = claims().extensions
+
+    /**
+     * Called by [ExtensionInstallationService] for every change, before anyone else hears of it.
+     *
+     * Applied at once on the EDT, where whoever changed the store expects to see it applied when the
+     * call returns; anywhere else it is queued for the EDT, coalesced with any other changes still
+     * waiting. A direct call rather than a listener so that a change cannot go unapplied for want
+     * of this service having been created to listen.
+     */
+    internal fun extensionsChanged() {
+        val application = ApplicationManager.getApplication()
+        if (application.isDispatchThread && application.isWriteIntentLockAcquired) {
+            WriteAction.run<RuntimeException>(::apply)
+        } else {
+            applies.trySend(Unit)
+        }
+    }
+
+    /** The claims and every provider move to the store's current contents, in one file-type change. */
+    private fun apply() {
+        FileTypeManagerEx.getInstanceEx().makeFileTypesChange("CodeBridge extension languages changed") {
+            claims.set(read())
+            for (provider in CodeBridgeFileLanguageProvider.EP_NAME.extensionsIfPointIsRegistered) {
+                provider.extensionsApplied()
+            }
+        }
+    }
 
     /** Whether an enabled extension contributes language support for this filename. */
     fun supportsName(name: String): Boolean = claims().claiming(name) != null
@@ -161,20 +241,24 @@ class CodeBridgeLanguageFileTypes {
         }
     }
 
+    /** Built on first use, then replaced only by [apply]. */
     private fun claims(): Claims {
-        val service = ExtensionInstallationService.getInstance()
-        val revision = service.changes.value
-        claims?.takeIf { it.revision == revision }?.let { return it }
-        // Not cached on failure: a store that could not be read once is not a store with nothing in
-        // it, and the revision will not change to say so later.
-        val built = runCatching {
-            service.list().filter { it.enabled }.flatMap { extension ->
-                extension.manifest.contributes.languages.map { claim(extension, it) }
-            }
-        }.onFailure { LOG.warn("Could not list installed extensions; no file will be claimed", it) }
-            .getOrNull() ?: return Claims(revision, emptyList())
-        return Claims(revision, built).also { claims = it }
+        claims.get()?.let { return it }
+        val built = read() ?: return Claims(emptyList(), emptyList())
+        // An apply that landed while this was reading the store has the newer list; keep it.
+        return if (claims.compareAndSet(null, built)) built else claims()
     }
+
+    /**
+     * The store's current contents, or null if it could not be read. Not cached on failure: a store
+     * that could not be read once is not a store with nothing in it.
+     */
+    private fun read(): Claims? = runCatching {
+        val extensions = ExtensionInstallationService.getInstance().list().filter { it.enabled }
+        Claims(extensions, extensions.flatMap { extension ->
+            extension.manifest.contributes.languages.map { claim(extension, it) }
+        })
+    }.onFailure { LOG.warn("Could not list installed extensions; no file will be claimed", it) }.getOrNull()
 
     /**
      * A contributed language and the images to draw its files with.

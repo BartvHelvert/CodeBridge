@@ -26,6 +26,7 @@ entries say so, and say what such a build loses.
     - [Intentions are one class each](#intentions-are-one-class-each)
     - [Code vision loses `singleEntryPerLine` in split mode](#code-vision-loses-singleentryperline-in-split-mode)
     - [File types cannot be added at runtime](#file-types-cannot-be-added-at-runtime)
+    - [A type detected from content outlives its detector (worked around)](#a-type-detected-from-content-outlives-its-detector-worked-around)
     - [Status bar widgets are registered up front](#status-bar-widgets-are-registered-up-front)
     - [Status bar widgets only go on the right](#status-bar-widgets-only-go-on-the-right)
 - [Synchronous APIs](#synchronous-apis)
@@ -219,6 +220,28 @@ the overrider answers afresh every time.
 
 **What would fix it.** A public way to register and unregister a file type at runtime, by
 extension pattern, that the registry treats like a descriptor-registered one.
+
+### A type detected from content outlives its detector (worked around)
+
+**What VS Code offers.** Disabling or removing an extension takes its grammar off every file it
+coloured.
+
+**What the platform offers.** `FileTypeDetectionService` keeps a custom type a content detector
+returned in the file's user data, and `clearCaches()` -- run by every file-type change -- clears the
+detection flags beside it but not that. A file detected while a detector would claim it keeps that
+type once the detector no longer does. TextMate's `TextMateFileDetector` is one: a file it detected
+stays `textmate`, highlighted without a grammar, after the grammar is unloaded. And
+`FileTypeManager.isFileOfType` runs content detection without asking the special file types first,
+so a lookup for some other type is enough to put the answer there.
+
+**What CodeBridge does.** It never lets TextMate hold a grammar for a file its overrider has let go.
+`CodeBridgeLanguageFileTypes` changes the claims and reloads the TextMate bundles in one write
+action and file-type change, from the same list of extensions, so detection never runs for a claimed
+file while its grammar is loaded. A grammar an extension contributes without a language is not
+covered: nothing claims those files, and the platform's cache can still keep them `textmate`.
+
+**What would fix it.** Versioning the detected type the way the persisted flags already are, with
+the file-type change count, so that a file-type change invalidates it.
 
 ### Status bar widgets are registered up front
 
