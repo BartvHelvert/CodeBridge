@@ -100,10 +100,14 @@ internal class CodeBridgeDecorations(private val project: Project, private val s
                     CodeBridgeApi.getInstance().decorations(project.projectId()).collect { replacement ->
                         withContext(Dispatchers.EDT) { paint(replacement) }
                     }
+                    // The backend ends it at once for a project it does not know.
+                    LOG.info("The extension decoration stream ended; retrying")
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (error: Exception) {
-                    LOG.debug("Lost the extension decoration stream; retrying", error)
+                    // At info, as are the replacements left unpainted below: rare, and otherwise
+                    // decorations that never appear leave nothing in the log to say where they went.
+                    LOG.info("Lost the extension decoration stream; retrying", error)
                 }
                 withContext(Dispatchers.EDT) { clear() }
                 delay(RETRY_MILLIS.milliseconds)
@@ -118,9 +122,10 @@ internal class CodeBridgeDecorations(private val project: Project, private val s
         latest[replacement.path to replacement.key] = replacement
         // Decorations are set on editors, so the file is open here; under the backend's path, in
         // whatever file system this side shows it from.
-        val file =
-            FileEditorManager.getInstance(project).openFiles.firstOrNull { it.path == replacement.path } ?: return
-        val document = FileDocumentManager.getInstance().getCachedDocument(file) ?: return
+        val file = FileEditorManager.getInstance(project).openFiles.firstOrNull { it.path == replacement.path }
+            ?: return LOG.info("Decorations '${replacement.key}' on ${replacement.path}, not open here; kept until it opens")
+        val document = FileDocumentManager.getInstance().getCachedDocument(file)
+            ?: return LOG.info("Decorations '${replacement.key}' on ${file.name}, which has no document loaded; kept until it opens")
         val length = document.textLength
         // Offsets on the backend's text, which may be a keystroke behind or ahead of this one.
         val ranges = replacement.ranges.map { range ->
