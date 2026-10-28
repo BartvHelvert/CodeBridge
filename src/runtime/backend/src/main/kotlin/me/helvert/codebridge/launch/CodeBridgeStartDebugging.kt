@@ -25,13 +25,17 @@ import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
+import me.helvert.codebridge.debug.HostedDebugSession
 import me.helvert.codebridge.debug.DebugLaunch
 import me.helvert.codebridge.exthost.MainThreadResult
 import me.helvert.codebridge.exthost.protocol.payload.DebugService
+import me.helvert.codebridge.exthost.protocol.payload.Messages
 import me.helvert.codebridge.language.CodeBridgeTextEditors
 import me.helvert.codebridge.testing.HostedTesting
 import me.helvert.codebridge.testing.TestSessionConsoles
+import me.helvert.codebridge.workbench.HostedMessages
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Duration.Companion.minutes
 
@@ -50,6 +54,9 @@ internal object CodeBridgeStartDebugging {
 
     /** The id of the session an environment's session is a child of. */
     val PARENT: Key<String> = Key.create("codebridge.debug.parent")
+
+    /** The session an environment's configuration was resolved in before its run started: for the run to take. */
+    val PREPARED: Key<AtomicReference<HostedDebugSession?>> = Key.create("codebridge.debug.prepared")
 
     suspend fun start(project: Project, argsJson: String): MainThreadResult {
         val result = CompletableDeferred<MainThreadResult>()
@@ -74,14 +81,38 @@ internal object CodeBridgeStartDebugging {
             val kept = kept(source, parent, origin, testing)
             val executor =
                 if (noDebug) DefaultRunExecutor.getRunExecutorInstance() else DefaultDebugExecutor.getDebugExecutorInstance()
-            CodeBridgeTextEditors.getInstance(project).asClient {
+            val editors = CodeBridgeTextEditors.getInstance(project)
+            val environment = editors.asClient {
                 val settings = settings(project, source, register = kept == source)
                 // Not run here: the configuration that does is the extension's, for this run only.
                 if (kept != null && kept != source) settings(project, kept, register = true)
-                val environment = ExecutionEnvironmentBuilder.createOrNull(executor, settings)?.build()
-                if (environment == null) { result.complete(MainThreadResult("false")); return@asClient }
-                environment.assignNewExecutionId()
-                parent?.let { environment.putUserData(PARENT, it) }
+                ExecutionEnvironmentBuilder.createOrNull(executor, settings)?.build()
+            } ?: return MainThreadResult("false")
+            environment.assignNewExecutionId()
+            parent?.let { environment.putUserData(PARENT, it) }
+            // As VS Code starts it: resolved first, by the debugger's providers and the user's inputs. A
+            // launch canceled there starts nothing -- no run to end, which the IDE would log as failed --
+            // and the extension hears that it did not start. Oracle's Java extension starts a few such
+            // launches as it activates, only to have its settings' variables substituted.
+            if (resolvesFirst(environment)) {
+                val prepared = try {
+                    LaunchPreparation(project).prepare(environment)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: DebugLaunch.LaunchCanceledException) {
+                    return MainThreadResult("false")
+                } catch (error: Exception) {
+                    LOG.warn("An extension's debug configuration could not be resolved", error)
+                    HostedMessages.getInstance(project).notify(Messages.Severity.ERROR,
+                        error.message ?: "Unable to start VS Code debugger", source = source.name)
+                    return MainThreadResult("false")
+                }
+                val holder = AtomicReference<HostedDebugSession?>(prepared)
+                environment.putUserData(PREPARED, holder)
+                // The run takes it as it starts; one that never does leaves it to be closed here.
+                result.invokeOnCompletion { holder.getAndSet(null)?.close() }
+            }
+            editors.asClient {
                 // A debugged test run's session is the run's tab, its results the console.
                 if (testing && !noDebug && parent == null) TestSessionConsoles.claim(project)
                     ?.let { environment.putUserData(TestSessionConsoles.CONSOLE, it) }
@@ -107,6 +138,11 @@ internal object CodeBridgeStartDebugging {
         }
         return withTimeoutOrNull(START_MINUTES.minutes) { result.await() } ?: MainThreadResult("false")
     }
+
+    /** Whether [environment] runs as a `launch.json`-style DAP session, which is resolved before it starts. */
+    private fun resolvesFirst(environment: ExecutionEnvironment): Boolean =
+        LaunchJsonDapArgumentsProvider().isApplicable(environment.executor.id, environment.runProfile) &&
+            (environment.runProfile as CodeBridgeDebugRunConfiguration).source != null
 
     /**
      * What of a start is kept for the user to run again: a `launch.json` entry, by name; and for a

@@ -57,6 +57,8 @@ class SplitModeRuntimeTest {
                 assertTrue(frame.xx(BALLOON).list().none { it.hasSubtext("Error running") }, "an error shown for a canceled launch")
                 Thread.sleep(500)
             }
+            // Nor a run that the IDE logs as failed: it is resolved, and canceled, before any run starts.
+            assertNotLogged("CustomProcessedCantRunException", "a canceled launch logged as an error")
 
             assertEquals("true", command("probe.startDebug"))
             // The variables view is not always the only debugger tree on screen; the rows of all of them

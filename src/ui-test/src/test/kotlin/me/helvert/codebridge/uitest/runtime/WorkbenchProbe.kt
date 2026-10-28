@@ -14,12 +14,24 @@ import java.nio.file.Path
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 
-internal class WorkbenchProbe(val driver: Driver, val project: Path) {
+internal class WorkbenchProbe(val driver: Driver, val project: Path, private val home: Path) {
     private val backend = awaitProbeValue("the backend project", {
         runCatching { driver.singleProject(RdTarget.BACKEND) }.getOrNull()?.takeIf { it.isInitialized() }
     }) { it != null }!!
     private val servers = driver.service(SplitModeViewsTest.HostedLanguageServersRef::class, backend, RdTarget.BACKEND)
     fun command(name: String): String? = servers.executeCommandForTest(name, "[]")
+
+    /** What the backend has logged so far: its `idea.log`, not the client's, which is under `frontend`. */
+    fun backendLog(): String = Files.walk(home).use { paths ->
+        paths.filter { it.fileName.toString() == "idea.log" && !home.relativize(it).startsWith("frontend") }.toList()
+    }.joinToString("\n") { it.readText() }
+
+    /** Fails with what the backend logged around [text], when it logged it. */
+    fun assertNotLogged(text: String, failure: String) {
+        val log = backendLog()
+        val at = log.indexOf(text)
+        check(at < 0) { "$failure:\n${log.substring((at - 3_000).coerceAtLeast(0), (at + 3_000).coerceAtMost(log.length))}" }
+    }
 }
 
 /** A balloon: a message an extension shows, or one of the IDE's own notifications. */
@@ -55,7 +67,7 @@ internal fun withWorkbenchProbe(
     val run = context.runSplitIde(commands = CommandChain().waitForSmartMode(), open = "example.codebridgeactions")
     var failure: Throwable? = null
     try {
-        val probe = WorkbenchProbe(run.driver, project)
+        val probe = WorkbenchProbe(run.driver, project, context.paths.testHome)
         check(run.driver.isRemDevMode)
         awaitProbeValue(
             "the workbench probe activated",
