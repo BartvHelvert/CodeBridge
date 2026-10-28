@@ -119,15 +119,19 @@ class RunInTerminalTest {
     fun `a program that has just finished is read to the end when the session closes`() {
         val windows = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
         val written = StringBuffer()
-        // Closed at once, as the session ends the moment the adapter sees a short program exit -- and
-        // the terminal's text can come after that, here a moment later.
+        // Closed the moment the program exits, as the session ends when the adapter sees a short
+        // program exit -- and the terminal's text can come after that. Not closed before: a program
+        // still running after the grace is stopped, and on a slow runner starting `cmd` and its
+        // second of `ping` outlasted the grace, leaving only `^C`.
         RunInTerminal { text, _ -> written.append(text) }.use { terminal ->
-            runBlocking { terminal.run(
+            val response = runBlocking { terminal.run(
                 RunInTerminalRequestArguments(
                     args = if (windows) listOf("cmd.exe", "/d", "/c", "ping -n 2 127.0.0.1 >nul && echo last-words")
                     else listOf("/bin/sh", "-c", "sleep 0.5 && echo last-words")
                 )
             ) }
+            val program = ProcessHandle.of(requireNotNull(response.processId).toLong())
+            program.ifPresent { it.onExit().get(20, TimeUnit.SECONDS) }
         }
         assertTrue(written.contains("last-words"), "What it printed arrives: '$written'")
     }
