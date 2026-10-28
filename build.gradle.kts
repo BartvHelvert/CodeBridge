@@ -66,11 +66,18 @@ val sharedCacheDirectory: File by extra(
  *
  * The IntelliJ Platform plugin keeps the downloaded archives in the Gradle user home already, but
  * unpacks each one, four to five GB, under the checkout's own `.intellijPlatform`.
+ *
+ * No code instrumentation either. It compiles GUI Designer forms, of which there are none, and adds
+ * runtime null checks to Java code, which is a handful of files; Kotlin makes its own. It also
+ * works incrementally on the compiler's output and fails on a class the compiler has since deleted
+ * -- a Kotlin lambda or anonymous object taken out -- with `NoSuchFileException` until the module is
+ * cleaned.
  */
 allprojects {
     pluginManager.withPlugin("org.jetbrains.intellij.platform.base") {
         extensions.configure<IntelliJPlatformExtension> {
             caching.ides.path = sharedCacheDirectory.resolve("ides")
+            instrumentCode = false
         }
     }
 }
@@ -101,27 +108,20 @@ subprojects {
      * Incremental compilation does not notice every change a test depends on: adding a defaulted
      * parameter to a data class in `main` changes the constructor's JVM signature, and the tests
      * calling it were still served from an earlier compilation -- passing, then failing with
-     * `NoSuchMethodError` only once the output was deleted by hand. The instrumented output caches
-     * the same staleness a second time. A test run that silently reports last week's code is worse
-     * than no test run, so `gradlew freshTest` exists to rule it out.
+     * `NoSuchMethodError` only once the output was deleted by hand. A test run that silently
+     * reports last week's code is worse than no test run, so `gradlew freshTest` exists to rule it out.
      */
     // Read now, not inside the task: the configuration cache forbids touching `project` at
     // execution time.
     val hasTests = file("src/test").isDirectory
     val cleanTestClasses = tasks.register<Delete>("cleanTestClasses") {
         description = "Deletes compiled test classes, so that the next test run recompiles them."
-        // Only where there are tests to recompile: emptying these in a module without any leaves
-        // `instrumentTestCode` failing with "1 >= 1".
+        // Only where there are tests to recompile.
         onlyIf { hasTests }
-        // Compiled test classes and the instrumented copy of them. Not `build/kotlin`, which holds
-        // the incremental build history: deleting that leaves `instrumentCode` failing the same way.
-        delete(
-            layout.buildDirectory.dir("classes/kotlin/test"),
-            layout.buildDirectory.dir("instrumented"),
-        )
+        // Compiled test classes. Not `build/kotlin`, which holds the incremental build history.
+        delete(layout.buildDirectory.dir("classes/kotlin/test"))
     }
-    tasks.matching { it.name.startsWith("compile") || it.name.startsWith("instrument") }
-        .configureEach { mustRunAfter(cleanTestClasses) }
+    tasks.matching { it.name.startsWith("compile") }.configureEach { mustRunAfter(cleanTestClasses) }
 }
 
 /**
