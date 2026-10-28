@@ -60,8 +60,11 @@ class SplitModeWindowTest {
 
             // A single choice is a list popup at the caret.
             assertEquals("true", command("probe.pick"))
-            val pick = awaitList("the quick pick popup", { driver.ui.popup().list() }, "Probe beta")
-            pick.clickItem("Probe beta", fullMatch = false)
+            // A list reads through a remote fixture it keeps; the context keeps it from being collected.
+            driver.withContext {
+                awaitList("the quick pick popup", { driver.ui.popup().list() }, "Probe beta")
+                    .clickItem("Probe beta", fullMatch = false)
+            }
             answered("pick", "\"Probe beta\"")
             // Dismissing it answers too: the extension is waiting on `undefined`.
             assertEquals("true", command("probe.pick"))
@@ -72,13 +75,15 @@ class SplitModeWindowTest {
             // Several choices are a dialog; the extension gets the items ticked, in its own order.
             assertEquals("true", command("probe.pickMany"))
             val many = dialog("Probe pick many")
-            val manyList = awaitList("the multi-select list", { many.list() }, "Probe gamma")
-            manyList.clickItem("Probe alpha", fullMatch = false)
-            manyList.keyboard {
-                @Suppress("OPT_IN_USAGE") // Extends the list selection as a user does; there is no action for it.
-                hotKey(KeyEvent.VK_SHIFT, KeyEvent.VK_DOWN)
+            driver.withContext {
+                val manyList = awaitList("the multi-select list", { many.list() }, "Probe gamma")
+                manyList.clickItem("Probe alpha", fullMatch = false)
+                manyList.keyboard {
+                    @Suppress("OPT_IN_USAGE") // Extends the list selection as a user does; there is no action for it.
+                    hotKey(KeyEvent.VK_SHIFT, KeyEvent.VK_DOWN)
+                }
+                awaitProbeValue("two items selected", { manyList.selectedItems }) { it.size == 2 }
             }
-            awaitProbeValue("two items selected", { manyList.selectedItems }) { it.size == 2 }
             many.okButton.click()
             answered("pickMany", "[\"Probe alpha\",\"Probe beta\"]")
 

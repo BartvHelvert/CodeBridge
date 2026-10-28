@@ -30,11 +30,21 @@ class SplitModeTestingTest {
             val editor = frame.codeEditor()
             val gutter = frame.editorsSplitters().gutter()
 
-            /** The extension's markers: tooltip by zero-based line. */
-            fun markers(): Map<Int, String> = gutter.icons
-                .mapNotNull { icon -> icon.mark.getTooltipText()?.let { icon.line to it } }
-                .filter { (_, tooltip) -> PROBE_TESTS.any { it in tooltip } }
-                .toMap()
+            /**
+             * The extension's markers: tooltip by zero-based line. Each gutter icon is a throwaway
+             * remote object, which the context keeps from being collected before it is read.
+             */
+            fun markers(): Map<Int, String> = driver.withContext {
+                gutter.icons
+                    .mapNotNull { icon -> icon.mark.getTooltipText()?.let { icon.line to it } }
+                    .filter { (_, tooltip) -> PROBE_TESTS.any { it in tooltip } }
+                    .toMap()
+            }
+
+            /** Clicks the marker on zero-based [line] whose tooltip is [tooltip]. */
+            fun clickMarker(line: Int, tooltip: String) = driver.withContext {
+                gutter.icons.first { it.line == line && it.mark.getTooltipText() == tooltip }.click()
+            }
 
             fun requested() = command("probe.testState")
 
@@ -43,10 +53,7 @@ class SplitModeTestingTest {
             }
 
             // The suite's marker runs both of its tests through the extension's run profile.
-            runFromGutter(
-                gutter.icons.first { it.line == 0 && it.mark.getTooltipText() == "Run probe" }::click,
-                "Run 'probe'"
-            )
+            runFromGutter({ clickMarker(0, "Run probe") }, "Run 'probe'")
             awaitProbeValue("the run the extension received", ::requested) {
                 it?.contains(""""requested":[["passes","fails"]]""") == true
             }
@@ -73,10 +80,7 @@ class SplitModeTestingTest {
             editor.goToPosition(4, 1)
             editor.keyboard { typeText("test added") }
             awaitProbeValue("a marker for the test typed into the file", ::markers) { it[3] == "Run added" }
-            runFromGutter(
-                gutter.icons.first { it.line == 3 && it.mark.getTooltipText() == "Run added" }::click,
-                "Run 'added'"
-            )
+            runFromGutter({ clickMarker(3, "Run added") }, "Run 'added'")
             awaitProbeValue("the new test run by the extension", ::requested) {
                 it?.contains(""""requested":[["passes","fails"],["added"]]""") == true
             }
