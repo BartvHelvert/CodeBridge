@@ -96,4 +96,8 @@ internal class LocalCompletionCommandRunner : CodeBridgeCompletionCommandRunner 
     override fun run(project: Project, id: Long, length: Int, hash: Int) {
         if (!project.isDisposed) CodeBridgeCompletionCommands.getInstance(project).request(id, length, hash)
     }
+
+    override fun runInline(project: Project, length: Int, hash: Int) {
+        if (!project.isDisposed) CodeBridgeInlineCompletionLists.getInstance(project).request(length, hash)
+    }
 }

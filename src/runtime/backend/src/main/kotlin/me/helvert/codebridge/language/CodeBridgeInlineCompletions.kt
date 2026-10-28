@@ -134,7 +134,7 @@ internal class CodeBridgeInlineCompletionProvider : DebouncedInlineCompletionPro
             lists.free(answers)
             return InlineCompletionSuggestion.Empty
         }
-        lists.hold(request.editor, answers)
+        lists.hold(request.editor, answers, variants.mapNotNull { it.data.getUserData(OFFERED) })
         return object : InlineCompletionSuggestion {
             override suspend fun getVariants(): List<InlineCompletionVariant> = variants
         }
@@ -146,11 +146,14 @@ internal class CodeBridgeInlineCompletionProvider : DebouncedInlineCompletionPro
         caret: Int
     ): List<InlineCompletionVariant> =
         answers.asSequence()
-            .flatMap { answer -> answer.answer.items.map { Offered(answer.handle, it) } }
-            .mapNotNull { offered ->
-                val proposed = if (offered.item.snippet) Snippets.plain(offered.item.text) else offered.item.text
-                val range = offered.item.range?.let { CodeBridgeTextEdits.offsets(text, it) ?: return@mapNotNull null }
+            .flatMap { answer -> answer.answer.items.map { answer.handle to it } }
+            .mapNotNull { (handle, item) ->
+                val proposed = if (item.snippet) Snippets.plain(item.text) else item.text
+                val range = item.range?.let { CodeBridgeTextEdits.offsets(text, it) ?: return@mapNotNull null }
                 val pieces = InlineCompletionPlacement.place(text, caret, range, proposed) ?: return@mapNotNull null
+                val replaced = range ?: InlineCompletionPlacement.defaultRange(text, caret)
+                val accepted = text.replaceRange(replaced.startOffset, replaced.endOffset, proposed)
+                val offered = Offered(handle, item, accepted.length, accepted.hashCode())
                 val data = UserDataHolderBase().apply { putUserData(OFFERED, offered) }
                 InlineCompletionVariant.build(data, pieces.map(::element).asFlow())
             }
@@ -185,8 +188,11 @@ internal class CodeBridgeInlineCompletionProvider : DebouncedInlineCompletionPro
         internal val OFFERED: Key<Offered> = Key.create("codebridge.inlineCompletion.offered")
     }
 
-    /** One item of provider [handle]'s answer. */
-    internal data class Offered(val handle: Int, val item: InlineCompletions.Item)
+    /**
+     * One item of provider [handle]'s answer, which leaves the document [length] characters long,
+     * hashing to [hash], when it is accepted.
+     */
+    internal data class Offered(val handle: Int, val item: InlineCompletions.Item, val length: Int, val hash: Int)
 }
 
 /**
@@ -194,25 +200,82 @@ internal class CodeBridgeInlineCompletionProvider : DebouncedInlineCompletionPro
  * offered for is hidden, and the command of an accepted item, run once its text is in.
  *
  * Both are heard from the editor's inline completion handler, which in split mode is the
- * backend's: the client tells it when it hides a suggestion, and why, which here is the only sign
- * one was accepted. A list a cancelled request was still holding is freed with the next, and any
- * still held when the editor goes are freed with it. Kept on the editor, so a closed one is not.
+ * backend's: a split-mode Tab runs there too, and hides the suggestion as accepted. A list a
+ * cancelled request was still holding is freed with the next, and any still held when the editor
+ * goes are freed with it. Kept on the editor, so a closed one is not.
+ *
+ * A split-mode client inserts the suggestion itself and asks for the next one straight after. When
+ * that request reaches the backend before the Tab, it ends the backend's session as typed over,
+ * and the Tab finds nothing to accept. So what a suggestion hidden that way offered is kept a little
+ * while, and the client says which item it inserted ([accepted], from
+ * `CodeBridgeInlineCompletionAcceptance`). Whichever way it is heard, a command runs once.
  */
 @Service(Service.Level.PROJECT)
 internal class CodeBridgeInlineCompletionLists(private val project: Project, private val scope: CoroutineScope) {
 
     private data class Held(val handle: Int, val id: Int)
 
-    /** Keeps [answers] in the host until the suggestion shown in [editor] is hidden. */
-    fun hold(editor: Editor, answers: List<HostedLanguageFeatures.InlineAnswer>) {
+    /** The items with a command a suggestion hidden without being accepted offered, and its lists. */
+    private class Left(
+        val document: Document,
+        val offered: List<CodeBridgeInlineCompletionProvider.Offered>,
+        val lists: List<Held>
+    )
+
+    /** Taken by [accepted], or let go [LEFT_MILLIS] after the suggestion was hidden. */
+    private val left: MutableSet<Left> = ConcurrentHashMap.newKeySet()
+
+    /** Keeps [answers] in the host until the suggestion shown in [editor], offering [offered], is hidden. */
+    fun hold(
+        editor: Editor,
+        answers: List<HostedLanguageFeatures.InlineAnswer>,
+        offered: List<CodeBridgeInlineCompletionProvider.Offered>
+    ) {
         val holder = editor as? UserDataHolderEx ?: return free(answers)
         listen(editor, holder)
         holder.putUserDataIfAbsent(HELD, ConcurrentHashMap.newKeySet()) += answers.map { Held(it.handle, it.answer.id) }
+        holder.putUserData(OFFERED_IN, offered.filter { it.item.command != null })
     }
 
     /** Lets [answers] go now, for a request that showed none of them. */
     fun free(answers: List<HostedLanguageFeatures.InlineAnswer>) =
         release(answers.map { Held(it.handle, it.answer.id) })
+
+    /**
+     * Runs the command of the item a client inserted, which left its document [length] characters
+     * long, hashing to [hash]. Waits a little for the backend to hide the suggestion, which this
+     * call can overtake. Nothing, when it was hidden as accepted: that ran the command already.
+     */
+    suspend fun accepted(length: Int, hash: Int) {
+        val (hidden, offered) = withTimeoutOrNull(SYNC_MILLIS.milliseconds) {
+            var found = take(length, hash)
+            while (found == null) {
+                delay(POLL_MILLIS.milliseconds)
+                found = take(length, hash)
+            }
+            found
+        } ?: return
+        val command = offered.item.command ?: return release(hidden.lists)
+        withTimeoutOrNull(SYNC_MILLIS.milliseconds) {
+            while (!readAction { hidden.document.textLength == length && hidden.document.text.hashCode() == hash }) {
+                delay(POLL_MILLIS.milliseconds)
+            }
+        } ?: LOG.info("An accepted inline completion had not arrived after ${SYNC_MILLIS}ms; running its command anyway")
+        runCommand(hidden.document, command) { release(hidden.lists) }
+    }
+
+    /** [accepted], from a caller that cannot wait for it. */
+    fun request(length: Int, hash: Int) {
+        scope.launch { accepted(length, hash) }
+    }
+
+    private fun take(length: Int, hash: Int): Pair<Left, CodeBridgeInlineCompletionProvider.Offered>? {
+        for (hidden in left) {
+            val offered = hidden.offered.firstOrNull { it.length == length && it.hash == hash } ?: continue
+            if (left.remove(hidden)) return hidden to offered
+        }
+        return null
+    }
 
     /** Listens to [editor]'s handler, once for each handler the editor is given. */
     private fun listen(editor: Editor, holder: UserDataHolderEx) {
@@ -224,8 +287,8 @@ internal class CodeBridgeInlineCompletionLists(private val project: Project, pri
         handler.addEventListener(object : InlineCompletionEventListener {
             override fun on(event: InlineCompletionEventType) {
                 if (event !is InlineCompletionEventType.Hide) return
-                // Typed as any enum, so the bytecode names `Enum`, not the internal `FinishType`; the
-                // only sign of acceptance in split mode (docs/platform-limitations.md).
+                // Typed as any enum, so the bytecode names `Enum`, not the internal `FinishType`
+                // (docs/platform-limitations.md).
                 @Suppress("UnstableApiUsage")
                 val finishType: Enum<*> = event.finishType
                 hidden(editor, finishType.name == SELECTED)
@@ -241,16 +304,26 @@ internal class CodeBridgeInlineCompletionLists(private val project: Project, pri
     /** On the editor thread, before the session is gone -- and, when accepted, before its text is in. */
     private fun hidden(editor: Editor, selected: Boolean) {
         val lists = take(editor)
+        val offered = editor.getUserData(OFFERED_IN).orEmpty()
+        editor.putUserData(OFFERED_IN, null)
         val session = InlineCompletionSession.getOrNull(editor)
         val accepted =
             session?.takeIf { selected && it.provider.id == CodeBridgeInlineCompletionProvider.ID }
                 ?.let(::offered)
         val command = accepted?.item?.command
-        if (command == null) {
-            release(lists)
+        if (command != null) {
+            // What was left in this document before can no longer be what the client inserts.
+            left.filter { it.document == editor.document }.forEach { if (left.remove(it)) release(it.lists) }
+            runAfterInsertion(editor.document, command) { release(lists) }
             return
         }
-        runAfterInsertion(editor.document, command) { release(lists) }
+        if (selected || offered.isEmpty()) return release(lists)
+        val hidden = Left(editor.document, offered, lists)
+        left += hidden
+        scope.launch {
+            delay(LEFT_MILLIS.milliseconds)
+            if (left.remove(hidden)) release(hidden.lists)
+        }
     }
 
     private fun offered(session: InlineCompletionSession): CodeBridgeInlineCompletionProvider.Offered? =
@@ -269,18 +342,23 @@ internal class CodeBridgeInlineCompletionLists(private val project: Project, pri
                 while (readAction { document.modificationStamp } == stamp) delay(POLL_MILLIS.milliseconds)
             }
             if (changed == null) LOG.info("An accepted inline completion had not arrived after ${SYNC_MILLIS}ms; running its command anyway")
-            project.service<HostedLanguageServers>().afterSync(document) {
-                val features = HostedLanguageFeatures.getInstance(project)
-                features.scope.launch(start = CoroutineStart.UNDISPATCHED) {
-                    try {
-                        features.executeCommand(command)
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (failure: Exception) {
-                        LOG.warn("Could not run the command of an inline completion", failure)
-                    } finally {
-                        then()
-                    }
+            runCommand(document, command, then)
+        }
+    }
+
+    /** Runs [command] once the host has [document] as it reads now, and then [then]. */
+    private fun runCommand(document: Document, command: CodeActions.Command, then: () -> Unit) {
+        project.service<HostedLanguageServers>().afterSync(document) {
+            val features = HostedLanguageFeatures.getInstance(project)
+            features.scope.launch(start = CoroutineStart.UNDISPATCHED) {
+                try {
+                    features.executeCommand(command)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (failure: Exception) {
+                    LOG.warn("Could not run the command of an inline completion", failure)
+                } finally {
+                    then()
                 }
             }
         }
@@ -296,14 +374,19 @@ internal class CodeBridgeInlineCompletionLists(private val project: Project, pri
         private const val SYNC_MILLIS = 2_000L
         private const val POLL_MILLIS = 20L
 
+        /** How long a suggestion hidden without being accepted waits for a client to say it was. */
+        private const val LEFT_MILLIS = 5_000L
+
         /**
          * The finish type of a suggestion the user accepted, by name: the `FinishType` enum is
          * internal API, and naming its constant would reference it. `Hide.finishType` itself is
-         * public, and in split mode the hide the client forwards is the only sign of acceptance.
+         * public.
          */
         private const val SELECTED = "SELECTED"
 
         private val HELD: Key<MutableSet<Held>> = Key.create("codebridge.inlineCompletion.held")
+        private val OFFERED_IN: Key<List<CodeBridgeInlineCompletionProvider.Offered>> =
+            Key.create("codebridge.inlineCompletion.offeredIn")
         private val LISTENED: Key<Any> = Key.create("codebridge.inlineCompletion.listened")
         private val RELEASED: Key<Boolean> = Key.create("codebridge.inlineCompletion.released")
 
@@ -359,7 +442,8 @@ internal object InlineCompletionPlacement {
         }
     }
 
-    private fun defaultRange(text: CharSequence, caret: Int): TextRange {
+    /** The range a proposal replaces when its item names none. */
+    fun defaultRange(text: CharSequence, caret: Int): TextRange {
         var start = caret
         while (start > 0 && Character.isJavaIdentifierPart(text[start - 1])) start--
         var end = caret

@@ -10,6 +10,7 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.project.Project
+import com.intellij.platform.project.ProjectId
 import com.intellij.platform.project.projectId
 import kotlinx.coroutines.*
 import kotlinx.serialization.Serializable
@@ -39,26 +40,46 @@ class CodeBridgeCommandInsertHandler(private val insert: CodeBridgeInsertHandler
 interface CodeBridgeCompletionCommandRunner {
     /** As [CodeBridgeApi.runCompletionCommand]. */
     fun run(project: Project, id: Long, length: Int, hash: Int)
+
+    /** As [CodeBridgeApi.runInlineCompletionCommand]. */
+    fun runInline(project: Project, length: Int, hash: Int)
 }
 
 /** Asks the backend for completion commands, from outside the insertion that chose them. */
 @Service
 internal class CodeBridgeCompletionCommandRequests(private val scope: CoroutineScope) {
 
-    fun send(project: Project, document: Document, id: Long) {
-        // After the lookup finishes, which may still type the character the item was chosen with.
+    fun send(project: Project, document: Document, id: Long) =
+        send(project, document, "completion $id", { length, hash -> run(project, id, length, hash) }) { projectId, length, hash ->
+            runCompletionCommand(projectId, id, length, hash)
+        }
+
+    /** For the inline completion just inserted into [document]. */
+    fun sendInline(project: Project, document: Document) =
+        send(project, document, "an inline completion", { length, hash -> runInline(project, length, hash) }) { projectId, length, hash ->
+            runInlineCompletionCommand(projectId, length, hash)
+        }
+
+    private fun send(
+        project: Project,
+        document: Document,
+        what: String,
+        local: CodeBridgeCompletionCommandRunner.(Int, Int) -> Unit,
+        remote: suspend CodeBridgeApi.(ProjectId, Int, Int) -> Unit,
+    ) {
+        // After the insertion finishes: a lookup may still type the character the item was chosen with.
         scope.launch(Dispatchers.EDT) {
             val text = document.immutableCharSequence.toString()
-            val local = ApplicationManager.getApplication().getService(CodeBridgeCompletionCommandRunner::class.java)
-            if (local != null) return@launch local.run(project, id, text.length, text.hashCode())
+            val runner = ApplicationManager.getApplication().getService(CodeBridgeCompletionCommandRunner::class.java)
+            if (runner != null) return@launch runner.local(text.length, text.hashCode())
             val projectId = project.projectId()
             withContext(Dispatchers.Default) {
                 try {
-                    CodeBridgeApi.getInstance().runCompletionCommand(projectId, id, text.length, text.hashCode())
+                    CodeBridgeApi.getInstance().remote(projectId, text.length, text.hashCode())
                 } catch (cancelled: CancellationException) {
                     throw cancelled
                 } catch (failure: Exception) {
-                    LOG.warn("Could not ask for the command of completion $id", failure)
+                    LOG.warn("Could not ask for the command of $what", failure)
                 }
             }
         }

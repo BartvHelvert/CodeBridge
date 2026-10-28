@@ -54,6 +54,11 @@
              "Click for full compiler diagnostic". Keep the prefix in step with CodeBridgeDiagnosticsAnnotator. -->
         <codeInsight.linkHandler prefix="#codebridge-provided:" handlerClass="me.helvert.codebridge.editors.CodeBridgeProvidedDocumentLinks"/>
     </extensions>
+    <applicationListeners>
+        <!-- Which inline completion the user took, for its command: the backend can miss the Tab. -->
+        <listener class="me.helvert.codebridge.completion.CodeBridgeInlineCompletionAcceptance"
+                  topic="com.intellij.codeInsight.inline.completion.InlineCompletionInstallListener"/>
+    </applicationListeners>
     <actions>
         <action id="CodeBridge.OpenUserSettings" class="me.helvert.codebridge.settings.OpenUserSettingsAction"
                 text="Open VS Code User Settings (JSON)" description="Edit the settings.json every project's VS Code extensions read, beneath the project's own .vscode/settings.json">
