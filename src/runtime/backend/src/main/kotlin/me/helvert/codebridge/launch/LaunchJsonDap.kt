@@ -4,7 +4,6 @@ import com.intellij.execution.CantRunException
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.ExecutionResult
 import com.intellij.execution.configurations.RunProfile
-import com.intellij.execution.executors.DefaultRunExecutor
 import com.intellij.execution.filters.TextConsoleBuilderFactory
 import com.intellij.execution.runners.ExecutionEnvironment
 import com.intellij.execution.ui.ConsoleView
@@ -13,10 +12,6 @@ import com.intellij.execution.ui.ExecutionConsole
 import com.intellij.execution.ui.RunnerLayoutUi
 import com.intellij.execution.ui.layout.PlaceInGrid
 import com.intellij.icons.AllIcons
-import com.intellij.openapi.components.service
-import com.intellij.openapi.fileEditor.FileDocumentManager
-import com.intellij.openapi.fileEditor.FileEditorManager
-import com.intellij.openapi.progress.runBlockingMaybeCancellable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.platform.dap.*
@@ -35,25 +30,17 @@ import kotlinx.coroutines.*
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.jsonPrimitive
 import me.helvert.codebridge.debug.DebugLaunch
 import me.helvert.codebridge.debug.DebugTerminalTabs
 import me.helvert.codebridge.debug.HostedDebugSession
 import me.helvert.codebridge.debug.RunInTerminal
-import me.helvert.codebridge.extensions.ExtensionInstallationService
-import me.helvert.codebridge.language.HostedLanguageServers
-import me.helvert.codebridge.language.CodeBridgeTextEditors
-import me.helvert.codebridge.rpc.QuickInputDto
-import me.helvert.codebridge.rpc.QuickItemDto
 import me.helvert.codebridge.task.TaskSource
 import me.helvert.codebridge.task.CodeBridgeTaskRuns
 import me.helvert.codebridge.testing.TestSessionConsoles
 import me.helvert.codebridge.workbench.HostedMessages
-import me.helvert.codebridge.workbench.HostedQuickInputs
 import java.util.*
 import java.util.concurrent.CancellationException
 import java.util.concurrent.atomic.AtomicBoolean
-import kotlin.time.Duration.Companion.seconds
 import me.helvert.codebridge.exthost.protocol.payload.Messages as HostMessages
 
 class LaunchJsonAdapterId : DebugAdapterId("codebridge-launch-json", "VS Code launch.json")
@@ -139,44 +126,26 @@ class LaunchJsonDebugAdapterSupportProvider : DebugAdapterSupportProvider<Launch
             this.terminal = terminal
             val profile = environment.runProfile as? CodeBridgeDebugRunConfiguration
                 ?: throw ExecutionException("Unsupported launch profile")
-            val workspace = profile.workspace()
-                ?: throw ExecutionException("The project has no workspace directory")
-            // The workspace folder the entry is in, in a multi-root workspace; see [DebugLaunch].
-            val folder = (profile.source as? DebugSource.LaunchJson)?.folder
-            // Run is VS Code's Run Without Debugging, which the extension's providers get to see.
-            val raw = profile.rawConfiguration().let { raw ->
-                if (environment.executor.id == DefaultRunExecutor.EXECUTOR_ID) JsonObject(raw + ("noDebug" to JsonPrimitive(true)))
-                else raw
-            }
-            // Before anything is started for the session, as VS Code runs it: the task's own configuration,
-            // in a Run tool window tab of its own, waited for until it exits or reports ready.
-            raw["preLaunchTask"]?.let { task ->
-                @Suppress("DialogTitleCapitalization") // starts with the key's name
-                val label = (task as? JsonPrimitive)?.contentOrNull ?: throw ExecutionException("preLaunchTask must name a task")
-                val exit = try {
-                    CodeBridgeTaskRuns.runAndWait(project, TaskSource.TasksJson(label, folder))
+            val folder = LaunchPreparation.folder(profile)
+            // Resolved already when an extension started it, as VS Code resolves before it starts anything.
+            val prepared = environment.getUserData(CodeBridgeStartDebugging.PREPARED)?.getAndSet(null)
+            val session = try {
+                if (prepared != null) prepared.also { preLaunchTask(it.configuration, folder) }
+                else {
+                    preLaunchTask(LaunchPreparation.raw(environment), folder)
+                    LaunchPreparation(project).prepare(environment)
                 }
-                catch (canceled: CancellationException) { throw canceled }
-                catch (error: Exception) { throw ExecutionException("The preLaunchTask '$label' could not run: ${error.message}", error) }
-                if (exit != 0) throw ExecutionException("The preLaunchTask '$label' exited with code $exit")
+            } catch (canceled: DebugLaunch.LaunchCanceledException) {
+                terminal.close()
+                // Not an error, as in VS Code: the run just does not start. This is what IntelliJ ends
+                // a run on without reporting it; a cancellation passes the DAP layer and is reported.
+                throw CantRunException.CustomProcessedCantRunException()
+            } catch (error: Throwable) {
+                prepared?.close()
+                terminal.close()
+                throw error as? ExecutionException ?: ExecutionException(error.message ?: "Unable to start VS Code debugger", error)
             }
-            val editor = editorContext()
-            // As in VS Code, launch.json's inputs serve whatever configuration is started, an extension's too.
-            val inputs = runCatching { DebugLaunch.read(workspace, folder).inputs }.getOrDefault(emptyList())
-            val settings = DebugLaunch.settings(workspace, folder)
-            // The session's folder: the entry's, or the first for one the workspace file holds.
-            val sessionFolder = DebugLaunch.folderPath(workspace, folder) ?: DebugLaunch.layout(workspace).folders.first().path
-            val extensions = ExtensionInstallationService.getInstance().list()
-            val selected = DebugLaunch.selectExtensions(raw["type"]?.jsonPrimitive?.contentOrNull ?: "", extensions)
-            val session = project.service<HostedLanguageServers>().debugSession(selected, sessionFolder, settings,
-                install = { path -> ExtensionInstallationService.getInstance().install(path) { }.extension })
             try {
-                val input = DebugLaunch.inputs(inputs, Prompts(session))
-                // Blocking, as the variable substitution it calls back into is.
-                withContext(Dispatchers.IO) {
-                    session.prepare(raw, { config, command -> DebugLaunch.substitute(config, workspace, settings, command, input, editor, folder) },
-                        parent = environment.getUserData(CodeBridgeStartDebugging.PARENT))
-                }
                 session.started()
                 CodeBridgeDebugSessions.started(session.id, environment)
                 val adapter = session.adapter(
@@ -192,17 +161,27 @@ class LaunchJsonDebugAdapterSupportProvider : DebugAdapterSupportProvider<Launch
                     CodeBridgeChildSessions.stop(session.id)
                     DebugLaunch.postDebugTask(session.configuration)?.let { postDebugTask(it, folder) }
                 }
-            } catch (canceled: DebugLaunch.LaunchCanceledException) {
-                session.close()
-                terminal.close()
-                // Not an error, as in VS Code: the run just does not start. This is what IntelliJ ends
-                // a run on without reporting it; a cancellation passes the DAP layer and is reported.
-                throw CantRunException.CustomProcessedCantRunException()
             } catch (error: Throwable) {
                 session.close()
                 terminal.close()
                 throw ExecutionException(error.message ?: "Unable to start VS Code debugger", error)
             }
+        }
+
+        /**
+         * Before anything is started for the session, as VS Code runs it: the task's own configuration,
+         * in a Run tool window tab of its own, waited for until it exits or reports ready.
+         */
+        private suspend fun preLaunchTask(config: JsonObject, folder: String?) {
+            val task = config["preLaunchTask"] ?: return
+            @Suppress("DialogTitleCapitalization") // starts with the key's name
+            val label = (task as? JsonPrimitive)?.contentOrNull ?: throw ExecutionException("preLaunchTask must name a task")
+            val exit = try {
+                CodeBridgeTaskRuns.runAndWait(project, TaskSource.TasksJson(label, folder))
+            }
+            catch (canceled: CancellationException) { throw canceled }
+            catch (error: Exception) { throw ExecutionException("The preLaunchTask '$label' could not run: ${error.message}", error) }
+            if (exit != 0) throw ExecutionException("The preLaunchTask '$label' exited with code $exit")
         }
 
         private fun JsonObject.name(): String = (this["name"] as? JsonPrimitive)?.contentOrNull ?: "VS Code launch"
@@ -221,57 +200,6 @@ class LaunchJsonDebugAdapterSupportProvider : DebugAdapterSupportProvider<Launch
                     "The postDebugTask '$label' $problem", source = "VS Code launch")
             }
         }
-
-        /**
-         * `launch.json`'s `inputs`, asked in front of the user: drawn by the frontend, on the
-         * client's screen, and waited for. Canceling one cancels the launch, as it does in VS Code.
-         */
-        private inner class Prompts(private val session: HostedDebugSession) : DebugLaunch.InputPrompts {
-            override fun text(input: InputDefinition.PromptString): String? = ask(QuickInputDto(
-                id = 0, kind = QuickInputDto.INPUT, title = TITLE, prompt = input.description ?: input.id,
-                value = input.default.orEmpty(), password = input.password,
-            ))?.value
-
-            override fun pick(input: InputDefinition.PickString): String? {
-                if (input.options.isEmpty()) return null
-                val chosen = ask(QuickInputDto(
-                    id = 0, kind = QuickInputDto.PICK, title = TITLE, placeholder = input.description ?: input.id,
-                    items = input.options.map { QuickItemDto(it.label, picked = it.value == input.default) },
-                ))?.chosen?.firstOrNull() ?: return null
-                return input.options.getOrNull(chosen)?.value
-            }
-
-            override fun command(input: InputDefinition.Command): String? = session.executeCommand(input.command, input.args)
-
-            private fun ask(question: QuickInputDto): HostedQuickInputs.Answer? =
-                runBlockingMaybeCancellable { HostedQuickInputs.getInstance(project).ask(question).answer() }
-        }
-
-        /**
-         * The file and line the user was in, for `${file}` and its kin. Read as the split-mode
-         * client, whose editor is the one in front of the user; empty when there is none.
-         */
-        private fun editorContext(): DebugLaunch.EditorContext {
-            var context = DebugLaunch.EditorContext()
-            runCatching {
-                runBlockingMaybeCancellable {
-                    withTimeoutOrNull(5.seconds) {
-                        CodeBridgeTextEditors.getInstance(project).asClient {
-                            val editor = FileEditorManager.getInstance(project).selectedTextEditor ?: return@asClient
-                            val file = FileDocumentManager.getInstance().getFile(editor.document)
-                            context = DebugLaunch.EditorContext(
-                                file = file?.takeIf { it.isInLocalFileSystem }?.toNioPath(),
-                                lineNumber = editor.caretModel.logicalPosition.line + 1,
-                                selectedText = editor.selectionModel.selectedText,
-                            )
-                        }
-                    }
-                }
-            }
-            return context
-        }
-
-        private companion object { const val TITLE = "Launch Input" }
 
         override val breakpointsDescription = DapBreakpointsDescription(CodeBridgeLineBreakpointType::class.java, CodeBridgeExceptionBreakpointType::class.java)
     }

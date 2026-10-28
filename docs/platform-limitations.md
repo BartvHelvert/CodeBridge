@@ -55,6 +55,7 @@ entries say so, and say what such a build loses.
     - [Why an inline completion was hidden is internal (worked around)](#why-an-inline-completion-was-hidden-is-internal-worked-around)
     - [Some public signatures still take obsolete types](#some-public-signatures-still-take-obsolete-types)
     - [Out-of-process JCEF calls only deprecated resource handler methods](#out-of-process-jcef-calls-only-deprecated-resource-handler-methods)
+    - [A run that quietly does not start is logged as an error (worked around)](#a-run-that-quietly-does-not-start-is-logged-as-an-error-worked-around)
 
 ## Drawing
 
@@ -655,3 +656,23 @@ request there as an unreachable site.
 pairs, and `open` and `read` delegate to the deprecated ones.
 
 **What would fix it.** Out-of-process JCEF forwarding `open` and `read`.
+
+### A run that quietly does not start is logged as an error (worked around)
+
+**What VS Code offers.** A launch that does not start, without it being an error: the user
+dismisses one of `launch.json`'s inputs, a `${command:...}` answers nothing, or a debug configuration
+provider resolves the configuration to `undefined`. `vscode.debug.startDebugging` then returns false.
+
+**What the platform offers.** A DAP run ends without a report when its adapter launch throws
+`CantRunException.CustomProcessedCantRunException`. Run without debugging, though, the DAP layer
+completes a promise with that exception, which has no error handler, and `AsyncPromise` logs it as
+an error: the IDE's error indicator lights up for a launch the user canceled.
+
+**What CodeBridge does.** Resolves a launch an extension starts before its run is started, as VS
+Code does (`CodeBridgeStartDebugging`, `LaunchPreparation`): one canceled there starts no run, and the
+run that does start takes the resolved session. Oracle's Java extension starts a few such launches
+each time it activates. A run the user starts from the IDE is still resolved inside the adapter
+launch, so dismissing one of its inputs, run without debugging, is still logged.
+
+**What would fix it.** Quiet start failures that the DAP layer does not log, or a public hook to
+resolve a run's configuration before the run starts, that can cancel it.
