@@ -43,8 +43,7 @@ class CodeBridgeTextMateHighlightingTest {
                 // The light fixture doesn't load CodeBridge's descriptor. The split test exercises
                 // the real registrations; here the editor and the reload itself are under test.
                 TextMateBundleProvider.EP_NAME.point.registerExtension(CodeBridgeTextMateBundles(), fixture.testRootDisposable)
-                ApplicationManager.getApplication().messageBus.connect(fixture.testRootDisposable)
-                    .subscribe(ExtensionInstallationService.CHANGED, CodeBridgeTextMateInstallationListener())
+                registerFileLanguage(fixture.testRootDisposable)
                 ApplicationManager.getApplication().messageBus.connect(fixture.testRootDisposable)
                     .subscribe(FileTypeManager.TOPIC, object : FileTypeListener {
                         override fun fileTypesChanged(event: FileTypeEvent) {

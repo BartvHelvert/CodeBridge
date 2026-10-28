@@ -2,7 +2,6 @@ package me.helvert.codebridge.textmate
 
 import com.intellij.codeInsight.editorActions.enter.EnterBetweenBracesDelegate
 import com.intellij.lang.LanguageExtensionPoint
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.extensions.DefaultPluginDescriptor
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.testFramework.LightProjectDescriptor
@@ -34,8 +33,7 @@ class CodeBridgeTextMateEnterBetweenBracesTest {
             onEdt {
                 // The light fixture doesn't load CodeBridge's descriptor.
                 TextMateBundleProvider.EP_NAME.point.registerExtension(CodeBridgeTextMateBundles(), fixture.testRootDisposable)
-                ApplicationManager.getApplication().messageBus.connect(fixture.testRootDisposable)
-                    .subscribe(ExtensionInstallationService.CHANGED, CodeBridgeTextMateInstallationListener())
+                registerFileLanguage(fixture.testRootDisposable)
                 val delegate = LanguageExtensionPoint<EnterBetweenBracesDelegate>(
                     TextMateLanguage.LANGUAGE.id, CodeBridgeTextMateEnterBetweenBraces(),
                 )

@@ -42,6 +42,24 @@ internal class CodeBridgeTextMateFileLanguage : CodeBridgeFileLanguageProvider {
     override fun claimed(fileType: FileType) {
         ApplicationManager.getApplication().getService(CodeBridgeTextMateFileTypes::class.java).register(fileType)
     }
+
+    // Reading the mapping waits for TextMate's initial bundle loading, which belongs off the EDT.
+    // Unlike ensureInitialized(), this remains public in newer platform builds.
+    override fun prepareForExtensions() {
+        TextMateService.getInstance().fileNameMatcherToScopeNameMapping
+    }
+
+    /**
+     * Reloads the bundles inside the caller's file-type change, which is also what editors need to
+     * rebuild their highlighters when only a grammar's contents changed: TextMate fires a change of
+     * its own only when the filename-to-scope mapping does. A reload made beside the change instead,
+     * with the event after it, let anything that looked in between find a file's language changed
+     * without notice -- the PSI does on entering dumb mode, and failed with "View provider
+     * resurrection failed: different base languages".
+     */
+    override fun extensionsApplied() {
+        TextMateService.getInstance().reloadEnabledBundles()
+    }
 }
 
 /**
