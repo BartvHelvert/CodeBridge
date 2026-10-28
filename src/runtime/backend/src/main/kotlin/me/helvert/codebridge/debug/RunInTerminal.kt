@@ -169,13 +169,16 @@ class RunInTerminal(
 
     /**
      * Completes once the terminal is done: everything started here has ended and been read, or it
-     * has said nothing for [QUIET_MILLIS]; at the latest after [GRACE_MILLIS].
+     * has said nothing for [QUIET_MILLIS] since it last spoke; at the latest after [GRACE_MILLIS].
      *
      * What the session's end waits for. An adapter says the program has ended as soon as it has,
      * and the client stops reading its output at that -- while what the program printed is still
      * on its way out of the terminal, a few milliseconds behind. Quiet counts as done because what
      * runs in the terminal need not end with the program: CodeLLDB's `codelldb-launch` stays until
      * the session is disconnected, which waiting for would hold every run back the full grace.
+     * Silence before the terminal's first word is not quiet, though: a slow Windows runner took
+     * longer than [QUIET_MILLIS] to start `cmd` on its pseudo-terminal, and the session ended with
+     * nothing read.
      *
      * Once every program has exited, though, neither rule applies, and what they printed is waited
      * for up to [DRAIN_MILLIS]: see [exited].
@@ -189,7 +192,7 @@ class RunInTerminal(
                 val now = System.currentTimeMillis()
                 val waited = now - since
                 val givenUp = if (running.all { exited(it.key) }) waited >= DRAIN_MILLIS
-                else now - maxOf(since, lastOutput) >= QUIET_MILLIS || waited >= GRACE_MILLIS
+                else lastOutput != 0L && now - maxOf(since, lastOutput) >= QUIET_MILLIS || waited >= GRACE_MILLIS
                 if (givenUp) {
                     allEnded.cancel()
                     break
