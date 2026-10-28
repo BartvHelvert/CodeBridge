@@ -49,6 +49,14 @@ interface CodeBridgeApi : RemoteApi<Unit> {
     suspend fun runCompletionCommand(projectId: ProjectId, id: Long, length: Int, hash: Int)
 
     /**
+     * Runs the command of the inline completion the client just inserted, the one that left the
+     * document [length] characters long, hashing to [hash]. Nothing, when the backend already heard
+     * of it from the Tab the client forwards; this covers the Tab arriving after the backend let
+     * the suggestion go.
+     */
+    suspend fun runInlineCompletionCommand(projectId: ProjectId, length: Int, hash: Int)
+
+    /**
      * Opens [uri], a document an extension makes up for a scheme of its own, as following a link to
      * it does in VS Code: rust-analyzer's "full compiler diagnostic". False when no extension
      * provides that scheme, or its provider had nothing to show.

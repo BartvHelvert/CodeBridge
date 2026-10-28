@@ -600,16 +600,27 @@ map lookup per event and is not a functional problem.
 
 **What the platform offers.** The `Hide` event carries a public `finishType`, but its type,
 `InlineCompletionUsageTracker.ShownEvents.FinishType`, is an internal enum from the usage
-statistics, nested in a class that is also deprecated. In split mode the hide the client forwards
-is the backend's only sign that a suggestion was accepted. `InlineCompletionEventAdapter` cannot be
+statistics, nested in a class that is also deprecated. `InlineCompletionEventAdapter` cannot be
 implemented without overriding its internal, non-extendable `onSuggestionInitialized` either.
+
+In split mode the backend hears of an acceptance only when the Tab the client forwards finds the
+backend's copy of the session alive. The client inserts the text itself and at once asks for the
+next suggestion (`SuggestionInserted`), and that request travels apart from the Tab. When it
+arrives first, the backend ends the old session as typed over (`TYPED` or `INVALIDATED`, not
+`SELECTED`), and the Tab then finds nothing to accept. The client forwards only hides that are not
+`SELECTED` (`FrontendInlineCompletionHideListener`), and the session id that would name the
+suggestion is internal.
 
 **What CodeBridge does.** Implements `InlineCompletionEventListener` directly and compares the
 finish type's name with `SELECTED` through `Enum` (`CodeBridgeInlineCompletionLists`), so the bytecode
-never names the internal enum. A renamed constant would stop accepted items' commands running.
+never names the internal enum. A renamed constant would stop accepted items' commands running. A
+suggestion hidden any other way keeps its items with a command for a few seconds. The client
+listens for `AfterInsert` on its own handlers (`CodeBridgeInlineCompletionAcceptance`) and sends the
+document's length and hash. The backend runs the command of the item that would leave exactly
+that text, unless the Tab already ran it.
 
-**What would fix it.** A public finish type on `Hide`, or an "accepted" event the backend hears in
-split mode.
+**What would fix it.** A public finish type on `Hide`, and an "accepted" event the backend hears in
+split mode, naming the suggestion and its variant, whichever request reaches it first.
 
 ### Some public signatures still take obsolete types
 

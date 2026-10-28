@@ -4,11 +4,13 @@ import com.intellij.codeInsight.inline.completion.InlineCompletionProvider
 import com.intellij.codeInsight.inline.completion.testInlineCompletion
 import com.intellij.openapi.components.service
 import com.intellij.openapi.vfs.LocalFileSystem
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import me.helvert.codebridge.exthost.ExtensionHostDocuments
 import me.helvert.codebridge.language.HostedLanguageFeatures
 import me.helvert.codebridge.language.HostedLanguageServers
+import me.helvert.codebridge.language.CodeBridgeInlineCompletionLists
 import me.helvert.codebridge.language.CodeBridgeInlineCompletionProvider
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
@@ -62,6 +64,39 @@ class InlineCompletionTest : EditorFixture() {
         assertTrue(calls.elementAt(executed).second.contains("acme.accepted"))
         // The command is converted against the list, so the list outlives it.
         assertTrue(executed < methods.indexOf(FREE), "Freed before the command ran: $methods")
+    }
+
+    @Test
+    fun `an insertion the backend saw only as an edit runs the command once the client says it took the item`() {
+        open()
+        fixture.testInlineCompletion {
+            callInlineCompletion()
+            delay()
+            // A split-mode client's insertion, arriving before the Tab it forwards: the session
+            // ends as the text changed under it, not as accepted.
+            withWriteAction { fixture.editor.document.setText(ACCEPTED) }
+            assertInlineHidden()
+        }
+        assertTrue(calls.none { it.first == EXECUTE })
+        runBlocking { CodeBridgeInlineCompletionLists.getInstance(fixture.project).accepted(ACCEPTED.length, ACCEPTED.hashCode()) }
+        awaitFreed()
+        val methods = calls.map { it.first }
+        val executed = methods.indexOf(EXECUTE)
+        assertTrue(executed >= 0, "The command did not run: $methods")
+        assertTrue(executed < methods.indexOf(FREE), "Freed before the command ran: $methods")
+    }
+
+    @Test
+    fun `the client saying it took an item the backend accepted runs nothing more`() {
+        open()
+        fixture.testInlineCompletion {
+            callInlineCompletion()
+            delay()
+            insert()
+        }
+        awaitFreed()
+        runBlocking { CodeBridgeInlineCompletionLists.getInstance(fixture.project).accepted(ACCEPTED.length, ACCEPTED.hashCode()) }
+        assertEquals(1, calls.count { it.first == EXECUTE }, calls.map { it.first }.toString())
     }
 
     @Test
@@ -132,6 +167,8 @@ class InlineCompletionTest : EditorFixture() {
     }
 
     private companion object {
+        /** The document with the proposal accepted. */
+        const val ACCEPTED = "print(\"hi\")\n"
         const val PROVIDE = $$"$provideInlineCompletions"
         const val FREE = $$"$freeInlineCompletionsList"
         const val EXECUTE = $$"$executeContributedCommand"

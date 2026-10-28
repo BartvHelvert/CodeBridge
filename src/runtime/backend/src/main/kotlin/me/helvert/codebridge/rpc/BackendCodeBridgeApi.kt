@@ -19,6 +19,7 @@ import me.helvert.codebridge.exthost.protocol.payload.StatusBar
 import me.helvert.codebridge.language.CodeBridgeCompletionCommands
 import me.helvert.codebridge.language.CodeBridgeDocumentColors
 import me.helvert.codebridge.language.CodeBridgeEditorDecorations
+import me.helvert.codebridge.language.CodeBridgeInlineCompletionLists
 import me.helvert.codebridge.language.CodeBridgeTextEditors
 import me.helvert.codebridge.launch.CodeBridgeCallStackMenu
 import me.helvert.codebridge.settings.BundledRuntime
@@ -81,6 +82,11 @@ internal class BackendCodeBridgeApi : CodeBridgeApi {
     override suspend fun runCompletionCommand(projectId: ProjectId, id: Long, length: Int, hash: Int) {
         val project = projectId.findProjectOrNull() ?: return
         CodeBridgeCompletionCommands.getInstance(project).run(id, length, hash)
+    }
+
+    override suspend fun runInlineCompletionCommand(projectId: ProjectId, length: Int, hash: Int) {
+        val project = projectId.findProjectOrNull() ?: return
+        CodeBridgeInlineCompletionLists.getInstance(project).accepted(length, hash)
     }
 
     override suspend fun clientRequests(projectId: ProjectId): Flow<List<ClientRequestDto>> {
