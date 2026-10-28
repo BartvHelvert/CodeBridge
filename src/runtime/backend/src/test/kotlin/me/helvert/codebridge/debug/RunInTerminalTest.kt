@@ -74,6 +74,23 @@ class RunInTerminalTest {
     }
 
     @Test
+    fun `a terminal that is slow to say its first word is not taken as quiet`() {
+        val windows = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
+        val written = StringBuffer()
+        RunInTerminal { text, _ -> written.append(text) }.use { terminal ->
+            // Silent for a second, as `cmd` starting on a slow runner's pseudo-terminal was, then lingers.
+            runBlocking { terminal.run(
+                RunInTerminalRequestArguments(
+                    args = if (windows) listOf("cmd.exe", "/d", "/c", "ping -n 2 127.0.0.1 >nul && echo late-words && ping -n 6 127.0.0.1 >nul")
+                    else listOf("/bin/sh", "-c", "sleep 1 && echo late-words && sleep 5")
+                )
+            ) }
+            runBlocking { withTimeout(10.seconds) { terminal.finished().await() } }
+            assertTrue(written.contains("late-words"), "Read before the session ends: '$written'")
+        }
+    }
+
+    @Test
     fun `a shown terminal takes what the user types, and its text stays out of the console`() {
         val windows = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
         val console = StringBuffer()
