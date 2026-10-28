@@ -240,11 +240,14 @@ class SplitModeExtensionTest {
     private fun acceptCompletion(driver: Driver, editor: JEditorUiComponent, label: String, line: Int = 2) {
         editor.goToPosition(line, 1)
         driver.invokeAction("CodeCompletion", component = editor.component)
-        val list = driver.ideFrame { }.completionList()
-        awaitValue("the '$label' completion", {
-            if (list.present()) list.items else emptyList()
-        }) { items -> items.any { it.contains(label) } }
-        list.selectItem(label, fullMatch = false)
+        // Pin the list's remote fixture from the first read until the item is selected.
+        driver.withContext {
+            val list = ideFrame { }.completionList()
+            awaitValue("the '$label' completion", {
+                if (list.present()) list.items else emptyList()
+            }) { items -> items.any { it.contains(label) } }
+            list.selectItem(label, fullMatch = false)
+        }
         editor.keyboard { key(KeyEvent.VK_ENTER) }
     }
 
