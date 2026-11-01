@@ -59,6 +59,34 @@ class WorkbenchDispatcherTest {
         }
     }
 
+    @Test fun `closing while a call finishes does not throw`() {
+        // A call that finishes as the dispatcher closes takes itself out of the calls close() cancels.
+        // The window is narrow, so it is tried many times, the call released on another thread as
+        // close() runs.
+        repeat(20_000) {
+            val started = CountDownLatch(1)
+            val release = CompletableDeferred<Unit>()
+            val dispatcher = WorkbenchDispatcher(object : MainThreadHandler {
+                override fun handle(call: MainThreadCall): String? = null
+                override suspend fun answer(call: MainThreadCall): MainThreadResult {
+                    started.countDown()
+                    release.await()
+                    return MainThreadResult("true")
+                }
+            }, {})
+            dispatcher.request(RpcMessage.Request(1, 1, "slow", "[]"), MainThreadCall("Commands", "slow", "[]"))
+            assertTrue(started.await(2, TimeUnit.SECONDS))
+            val together = CyclicBarrier(2)
+            val finishing = Thread {
+                together.await()
+                release.complete(Unit)
+            }.apply { start() }
+            together.await()
+            dispatcher.close()
+            finishing.join()
+        }
+    }
+
     @Test fun `a call with nested buffers reaches its handler with them`() {
         val replies = LinkedBlockingQueue<RpcMessage>()
         val seen = CompletableFuture<List<ByteArray>>()
