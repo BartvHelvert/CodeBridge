@@ -1,6 +1,7 @@
 package me.helvert.codebridge.uitest.runtime
 
 import com.intellij.driver.client.Driver
+import com.intellij.driver.client.Remote
 import com.intellij.driver.client.impl.RefWrapper
 import com.intellij.driver.model.RdTarget
 import com.intellij.driver.sdk.invokeAction
@@ -20,7 +21,7 @@ import kotlin.test.assertTrue
 class SplitModeRuntimeTest {
     @Test
     @Suppress("UnusedExpression") // The trailing Unit keeps the last probe's value from becoming the result.
-    fun `extension tasks can be stopped and rerun and debugger controls reach the adapter`() =
+    fun `extension tasks can be stopped and rerun, terminals are not runs, and debugger controls reach the adapter`() =
     // Traced: on the Windows runner the first Stop never ended the task, with nothing logged
         // about how it tried to.
         withWorkbenchProbe(
@@ -47,6 +48,17 @@ class SplitModeRuntimeTest {
             awaitProbeValue("output after rerunning the task", { console.text }) { it.contains("PROBE TASK READY") }
             driver.act("Stop", console)
             awaitProbeValue("the rerun task stopped", { stateContains("taskClosed", 2) }) { it }
+
+            // An extension's pseudoterminal gets a Run tab, but is no run: the run widget's Stop, which
+            // counts every tab with a live process, leaves it out -- as Oracle's Java build output must.
+            val runContent = driver.service(RunContentManagerRef::class, backend, RdTarget.BACKEND)
+            assertEquals("true", command("probe.showPseudoterminal"))
+            // Whether its tab has a process, read with the tab: a driver reference may not outlive the call.
+            val terminalHasProcess = awaitProbeValue("the pseudoterminal's Run tab", {
+                runContent.getAllDescriptors().firstOrNull { it.getDisplayName() == PSEUDOTERMINAL }
+                    ?.let { it.getProcessHandler() != null }
+            }) { it != null }
+            assertEquals(false, terminalHasProcess, "the pseudoterminal's tab counted as a running process")
 
             // A launch the extension's own provider cancels, after reading what was substituted, does
             // not start and is no error -- Oracle's Java extension starts one per batch of settings.
@@ -85,6 +97,25 @@ class SplitModeRuntimeTest {
             awaitProbeValue("the adapter session stopped", { stateContains("debugStopped", 1) }) { it }
             Unit
         }
+
+    @Remote("com.intellij.execution.ui.RunContentManager")
+    interface RunContentManagerRef {
+        fun getAllDescriptors(): List<RunContentDescriptorRef>
+    }
+
+    @Remote("com.intellij.execution.ui.RunContentDescriptor")
+    interface RunContentDescriptorRef {
+        fun getDisplayName(): String?
+        fun getProcessHandler(): ProcessHandlerRef?
+    }
+
+    @Remote("com.intellij.execution.process.ProcessHandler")
+    interface ProcessHandlerRef
+
+    private companion object {
+        /** The probe's `probe.showPseudoterminal` terminal's name. */
+        const val PSEUDOTERMINAL = "Probe pseudoterminal"
+    }
 }
 
 /**

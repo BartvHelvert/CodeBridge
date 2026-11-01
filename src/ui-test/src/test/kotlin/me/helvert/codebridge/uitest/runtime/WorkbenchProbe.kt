@@ -15,7 +15,7 @@ import kotlin.io.path.readText
 import kotlin.io.path.writeText
 
 internal class WorkbenchProbe(val driver: Driver, val project: Path, private val home: Path) {
-    private val backend = awaitProbeValue("the backend project", {
+    val backend = awaitProbeValue("the backend project", {
         runCatching { driver.singleProject(RdTarget.BACKEND) }.getOrNull()?.takeIf { it.isInitialized() }
     }) { it != null }!!
     private val servers = driver.service(SplitModeViewsTest.HostedLanguageServersRef::class, backend, RdTarget.BACKEND)
