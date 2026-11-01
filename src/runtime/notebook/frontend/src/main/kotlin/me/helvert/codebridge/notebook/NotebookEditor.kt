@@ -642,7 +642,8 @@ internal class NotebookEditor(
     /** [keys] do [action] in command mode, and its menu item shows them. */
     private fun commandKey(keys: ShortcutSet?, action: CellAction) {
         if (keys == null) return
-        action.shortcutSet = keys
+        // Only sets the shortcut the menu item shows: with no component, no key is bound.
+        action.registerCustomShortcutSet(keys, null)
         commandKey(keys) {
             val cells = selection()
             if (cells.isNotEmpty() && action.enabled(cells)) action.perform(cells)
