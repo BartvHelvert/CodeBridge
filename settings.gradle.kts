@@ -56,6 +56,15 @@ include("internal.backend")
 // Webviews in the IDE's browser, kept apart so only it requires the Web Browser (JCEF) plugin.
 include("webview.frontend")
 
+// Notebooks: the host's notebook services and each open notebook on the backend, the editor that
+// draws one on the frontend, and the RPC between them.
+for (side in listOf("shared", "backend", "frontend")) {
+    include("notebook.$side")
+}
+// HTML outputs with scripts, and SVG, in the IDE's browser: kept apart so only it requires the Web
+// Browser (JCEF) plugin.
+include("notebook.webview.frontend")
+
 // CodeBridge Bundled Extensions, under src/bundled: what plugins made from a VS Code extension depend on, which
 // hands their extensions to the runtime. `bundled` itself is the plugin, built from src/bundled/plugin.
 include("bundled")

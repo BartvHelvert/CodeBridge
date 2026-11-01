@@ -30,6 +30,10 @@
              `CodeBridge.internal.backend`, since it takes internal API. -->
         <extensionPoint qualifiedName="me.helvert.codebridge.daemonRestarter"
                         interface="me.helvert.codebridge.language.CodeBridgeDaemonRestarter" dynamic="true"/>
+        <!-- Main-thread services a module answers for the extension host itself: notebooks'
+             in `CodeBridge.notebook.backend`. -->
+        <extensionPoint qualifiedName="me.helvert.codebridge.hostService"
+                        interface="me.helvert.codebridge.language.CodeBridgeHostService" dynamic="true"/>
     </extensionPoints>
     <extensions defaultExtensionNs="com.intellij">
         <platform.rpc.backend.remoteApiProvider implementation="me.helvert.codebridge.rpc.BackendRpcApiProvider"/>

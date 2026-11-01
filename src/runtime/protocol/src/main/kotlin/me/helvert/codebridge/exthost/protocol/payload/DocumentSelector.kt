@@ -20,12 +20,17 @@ import kotlinx.serialization.json.contentOrNull
 object DocumentSelector {
 
     /**
-     * [path] is the file's absolute path with forward slashes, as `UriComponents.path` spells it.
+     * [path] is the document's absolute path with forward slashes, as `UriComponents.path` spells it;
+     * [scheme] its URI's scheme. [notebookType] is the type of the notebook a cell's document belongs
+     * to, null for any other document.
      *
      * A selector this cannot read is taken to match: better to ask a provider that then declines
      * than to hide one whose selector is merely shaped differently in a newer VS Code.
      */
-    fun matches(selector: JsonElement?, languageId: String, path: String): Boolean {
+    fun matches(
+        selector: JsonElement?, languageId: String, path: String,
+        scheme: String = UriComponents.FILE, notebookType: String? = null,
+    ): Boolean {
         val filters = when (selector) {
             is JsonArray -> selector
             is JsonObject, is JsonPrimitive -> listOf(selector)
@@ -34,18 +39,18 @@ object DocumentSelector {
         return filters.any { filter ->
             when (filter) {
                 is JsonPrimitive -> filter.contentOrNull.let { it == languageId || it == "*" }
-                is JsonObject -> matchesFilter(filter, languageId, path)
+                is JsonObject -> matchesFilter(filter, languageId, path, scheme, notebookType)
                 else -> false
             }
         }
     }
 
-    private fun matchesFilter(filter: JsonObject, languageId: String, path: String): Boolean {
+    private fun matchesFilter(filter: JsonObject, languageId: String, path: String, scheme: String, notebookType: String?): Boolean {
         fun string(name: String) = (filter[name] as? JsonPrimitive)?.contentOrNull
-        // Notebook cells only; there are no notebooks here.
-        if (string("notebookType") != null) return false
+        // Cells of that type of notebook only.
+        string("notebookType")?.let { if (notebookType == null || (it != notebookType && it != "*")) return false }
         string("language")?.let { if (it != languageId && it != "*") return false }
-        string("scheme")?.let { if (it != UriComponents.FILE && it != "*") return false }
+        string("scheme")?.let { if (it != scheme && it != "*") return false }
         return when (val pattern = filter["pattern"]) {
             null -> true
             is JsonPrimitive -> pattern.contentOrNull?.let { glob(it, path) } ?: true

@@ -108,13 +108,13 @@ object ExtensionHostInitData {
      *
      * The manifest is spread in wholesale because the host reads `contributes`, `engines`, `main`
      * and other npm fields straight off this object; only the identity and location fields are ours
-     * to add.
+     * to add. A [builtin] one is the runtime's own, which may use the proposed API it names.
      */
-    fun describeExtension(manifest: VsixManifest, location: Path): JsonObject = buildJsonObject {
+    fun describeExtension(manifest: VsixManifest, location: Path, builtin: Boolean = false): JsonObject = buildJsonObject {
         manifest.raw.forEach { (key, value) -> put(key, value) }
         put("identifier", identifier(manifest.id))
         put("extensionLocation", fileUri(location))
-        put("isBuiltin", false)
+        put("isBuiltin", builtin)
         put("isUserBuiltin", false)
         put("isUnderDevelopment", false)
         put("targetPlatform", "undefined")

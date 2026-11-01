@@ -45,10 +45,15 @@ internal fun withWorkbenchProbe(
     settings: String = """{"files.autoSave":"off"}""",
     /** Log categories traced in both halves, for a workflow whose failures the default log leaves unexplained. */
     traced: String? = null,
+    /** More files for the project, by name. */
+    files: Map<String, String> = emptyMap(),
+    /** The file the client opens first. */
+    open: String = "example.codebridgeactions",
     test: WorkbenchProbe.() -> Unit,
 ) {
     val project = Files.createTempDirectory("codebridge-$name")
     project.resolve("example.codebridgeactions").writeText(content)
+    files.forEach { (file, text) -> project.resolve(file).writeText(text) }
     val context = Starter.newContext(
         testName = name,
         testCase = builtAgainst(project),
@@ -64,7 +69,7 @@ internal fun withWorkbenchProbe(
         context.applyVMOptionsPatch { addSystemProperty("idea.log.trace.categories", traced) }
         context.frontendIDEContext.applyVMOptionsPatch { addSystemProperty("idea.log.trace.categories", traced) }
     }
-    val run = context.runSplitIde(commands = CommandChain().waitForSmartMode(), open = "example.codebridgeactions")
+    val run = context.runSplitIde(commands = CommandChain().waitForSmartMode(), open = open)
     var failure: Throwable? = null
     try {
         val probe = WorkbenchProbe(run.driver, project, context.paths.testHome)

@@ -31,7 +31,7 @@ import java.net.URI
  * highlights code in its own documentation -- in whatever language the fence names, where the IDE
  * or an installed extension knows it, and plain otherwise.
  */
-internal object HoverMarkdown {
+object HoverMarkdown {
 
     fun toHtml(project: Project, markdown: String): String {
         val flavour = Flavour(project)

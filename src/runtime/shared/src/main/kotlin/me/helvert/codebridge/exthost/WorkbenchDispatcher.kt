@@ -88,11 +88,6 @@ internal class WorkbenchDispatcher(
             // and a write to a full pipe blocks. Lumping them together reads as a slow handler.
             var computing = 0L
             try {
-                if (message.objectBuffers.values.any { it.isNotEmpty() })
-                    throw MainThreadException(
-                        "Unavailable",
-                        "Nested binary arguments are not supported by ${call.service}.${call.method}"
-                    )
                 val started = System.nanoTime()
                 val handling = handlers.launch(start = CoroutineStart.UNDISPATCHED) {
                     try {

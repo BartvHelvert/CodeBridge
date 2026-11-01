@@ -1,0 +1,25 @@
+<idea-plugin>
+    <dependencies>
+        <module name="intellij.platform.frontend"/>
+        <module name="intellij.platform.project"/>
+        <module name="CodeBridge.shared"/>
+        <module name="CodeBridge.notebook.shared"/>
+    </dependencies>
+    <extensionPoints>
+        <!-- Draws the outputs only a browser can, HTML with scripts and SVG; see `BrowserOutputFactory`. -->
+        <extensionPoint qualifiedName="me.helvert.codebridge.notebookBrowserOutput"
+                        interface="me.helvert.codebridge.notebook.BrowserOutputFactory" dynamic="true"/>
+    </extensionPoints>
+    <extensions defaultExtensionNs="com.intellij">
+        <!-- A file an extension's notebook type claims, `.ipynb` among them, opens as a notebook. -->
+        <fileEditorProvider implementation="me.helvert.codebridge.notebook.NotebookEditorProvider"/>
+        <postStartupActivity implementation="me.helvert.codebridge.notebook.CodeBridgeNotebooksActivity"/>
+        <!-- A notebook's text, which a split-mode backend opens, is hidden until the notebook replaces it. -->
+        <editorFactoryListener implementation="me.helvert.codebridge.notebook.NotebookTextHider"/>
+    </extensions>
+    <applicationListeners>
+        <!-- Save All saves notebooks too, which are not documents of the IDE's. -->
+        <listener class="me.helvert.codebridge.notebook.NotebookSaveListener"
+                  topic="com.intellij.openapi.fileEditor.FileDocumentManagerListener"/>
+    </applicationListeners>
+</idea-plugin>

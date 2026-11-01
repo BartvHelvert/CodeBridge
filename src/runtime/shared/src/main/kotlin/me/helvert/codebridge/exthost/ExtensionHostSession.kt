@@ -25,6 +25,11 @@ data class MainThreadCall(
     val method: String,
     val argsJson: String,
     val buffers: Map<Int, ByteArray> = emptyMap(),
+    /**
+     * Arguments that are a `SerializableObjectWithBuffers`, by position: their slot in [argsJson]
+     * holds the value itself, with `{"$$ref$$": n}` where the n-th of these buffers goes.
+     */
+    val objectBuffers: Map<Int, List<ByteArray>> = emptyMap(),
 )
 
 /** A workbench reply can carry JSON, raw bytes, or undefined. */
@@ -43,7 +48,12 @@ data class MainThreadResult(val json: String? = null, val bytes: ByteArray? = nu
  * with a `VSBuffer`, because their result is an array of numbers large enough that encoding it as
  * text would cost more than the call.
  */
-class HostReply(val json: String = "", val bytes: ByteArray? = null)
+class HostReply(
+    val json: String = "",
+    val bytes: ByteArray? = null,
+    /** The buffers a `SerializableObjectWithBuffers` reply's `{"$$ref$$": n}` entries in [json] name. */
+    val buffers: List<ByteArray> = emptyList(),
+)
 
 class MainThreadException(val remoteName: String, message: String) : IOException(message)
 
@@ -236,6 +246,25 @@ class ExtensionHostSession(
     suspend fun callForBytes(service: String, method: String, argsJson: String, cancellable: Boolean = false): ByteArray? =
         request(service, method, argsJson, cancellable, emptyMap(), emptyMap()).bytes
 
+    /**
+     * Calls into the extension host for a method whose result is a `SerializableObjectWithBuffers` --
+     * a notebook's cells, whose outputs are bytes -- sent and cancelled as [call] is. The reply's
+     * [HostReply.json] is the value, its [HostReply.buffers] what that value's references name.
+     */
+    suspend fun callWithBuffers(
+        service: String,
+        method: String,
+        argsJson: String,
+        cancellable: Boolean = false,
+        buffers: Map<Int, ByteArray> = emptyMap(),
+        objectBuffers: Map<Int, List<ByteArray>> = emptyMap(),
+        /**
+         * Whether to give up after [REPLY_SECONDS]; not for a method answered once the work it starts
+         * is done, such as a kernel's `$executeCells`. A host that dies still fails it.
+         */
+        timesOut: Boolean = true,
+    ): HostReply = request(service, method, argsJson, cancellable, buffers, objectBuffers, timesOut)
+
     private suspend fun request(
         service: String,
         method: String,
@@ -243,6 +272,7 @@ class ExtensionHostSession(
         cancellable: Boolean,
         buffers: Map<Int, ByteArray>,
         objectBuffers: Map<Int, List<ByteArray>>,
+        timesOut: Boolean = true,
     ): HostReply {
         if (closed.get()) throw IOException("Extension host is closed")
         val requestId = outgoingRequestId.incrementAndGet()
@@ -268,7 +298,7 @@ class ExtensionHostSession(
             // A command runs for as long as it takes, as in VS Code: many wait on the user -- a quick
             // pick, a message's buttons -- or on work like a project import, and a timeout here reported
             // those as failures. A host that dies still fails them, in [finish].
-            if (service == "ExtHostCommands" && method == $$"$executeContributedCommand") return result.await()
+            if (!timesOut || service == "ExtHostCommands" && method == $$"$executeContributedCommand") return result.await()
             return withTimeoutOrNull(REPLY_SECONDS.seconds) { result.await() }
                 ?: throw TimeoutException("$service.$method had no reply within $REPLY_SECONDS seconds")
         } catch (cancelled: CancellationException) {
@@ -347,9 +377,9 @@ class ExtensionHostSession(
             }
 
             is RpcMessage.ReplyOkJsonWithBuffers -> {
-                // One buffer is all any method this side asks for; the shape allows several.
                 dispatcher.receivedReply {
-                    pending.remove(message.requestId)?.complete(HostReply(message.json, message.buffers.firstOrNull()))
+                    pending.remove(message.requestId)
+                        ?.complete(HostReply(message.json, message.buffers.firstOrNull(), message.buffers))
                 }
                 return
             }
@@ -379,6 +409,7 @@ class ExtensionHostSession(
             method = message.method,
             argsJson = message.argsJson,
             buffers = message.buffers,
+            objectBuffers = message.objectBuffers,
         )
         calls.add(call)
         // Read on the wire thread before the activation reply can complete on another thread.

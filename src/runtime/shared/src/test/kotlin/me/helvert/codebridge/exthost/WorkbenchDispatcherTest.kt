@@ -59,14 +59,17 @@ class WorkbenchDispatcherTest {
         }
     }
 
-    @Test fun `unsupported nested buffers reject only that request`() {
+    @Test fun `a call with nested buffers reaches its handler with them`() {
         val replies = LinkedBlockingQueue<RpcMessage>()
-        WorkbenchDispatcher({ "true" }, replies::add).use { dispatcher ->
-            dispatcher.request(RpcMessage.Request(1, 1, "command", "[null]", objectBuffers = mapOf(0 to listOf(byteArrayOf(1)))),
-                MainThreadCall("Commands", "command", "[null]"))
-            dispatcher.request(RpcMessage.Request(2, 1, "next", "[]"), MainThreadCall("Commands", "next", "[]"))
-            assertIs<RpcMessage.ReplyError>(replies.poll(2, TimeUnit.SECONDS))
-            assertEquals(RpcMessage.ReplyOkJson(2, "true"), replies.poll(2, TimeUnit.SECONDS))
+        val seen = CompletableFuture<List<ByteArray>>()
+        val handler = MainThreadHandler { call -> seen.complete(call.objectBuffers[0].orEmpty()); "true" }
+        WorkbenchDispatcher(handler, replies::add).use { dispatcher ->
+            // A notebook kernel's `$updateExecution`: its outputs' bytes beside the JSON.
+            val buffers = mapOf(0 to listOf(byteArrayOf(1)))
+            dispatcher.request(RpcMessage.Request(1, 1, "update", "[null]", objectBuffers = buffers),
+                MainThreadCall("Kernels", "update", "[null]", objectBuffers = buffers))
+            assertEquals(RpcMessage.ReplyOkJson(1, "true"), replies.poll(2, TimeUnit.SECONDS))
+            assertEquals(listOf(1), seen.get(2, TimeUnit.SECONDS).single().map { it.toInt() })
         }
     }
 }

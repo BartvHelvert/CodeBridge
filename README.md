@@ -37,9 +37,12 @@ Declaration, Find Usages, Rename and Reformat Code, the debugger and more.
   `.code-workspace` files. When an extension changes a setting, it is saved to `settings.json`.
 - **Extension UI:** extension views as tool windows, webviews, status bar items, notifications,
   quick picks, progress, terminals and test runners.
+- **Notebooks:** `.ipynb` files, and other notebook types extensions contribute, open as their cells;
+  run them with a kernel an extension provides, and see text, errors and images below each
+  cell. Rich outputs drawn by renderers (HTML, widgets, interactive plots) are not supported.
 
-Notebooks, source control, comments, custom editors and extensions' chat and AI features are not
-supported. The full breakdown is in [Status](docs/status.md).
+Source control, comments, custom editors and extensions' chat and AI features are not supported. The
+full breakdown is in [Status](docs/status.md).
 
 CodeBridge also works with remote development (split mode): the UI stays on your machine and
 extensions run where the project lives. Installing extensions, settings and the core editor

@@ -21,6 +21,12 @@ reading `suite <name>` and `test <name>` lines from open `.codebridgeactions` do
 they change, whose Run profile passes every test but those named `fails...`. `probe.testState`
 lists the tests each run asked for.
 
+`notebook-probe.js` is the kernel `SplitModeNotebookTest` runs a `.ipynb` with, whose type the
+runtime's built-in `ipynb` extension serializes: a controller for `jupyter-notebook` that answers
+each cell with `PROBE RESULT` and its text in capitals. `probe.notebookState` lists the notebooks the
+host was told of, each one's cell texts, and the texts the kernel ran; `probe.showNotebook` opens
+`example.ipynb` with `openNotebookDocument` and `showNotebookDocument`, as Jupyter opens one.
+
 `editor-probe.js` gives `.codebridgeactions` files the language features `SplitModeActionsTest` and
 `SplitModeLanguageFeaturesTest` use from the client: a formatter, rename, a quick fix for `ERROR`,
 selection ranges that step from a word through a `name=value` assignment to its line, a link from

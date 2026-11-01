@@ -67,6 +67,20 @@ object Completions {
     /** `InsertTextRules.InsertAsSnippet`; bit 1 is KeepWhitespace, which changes nothing here. */
     private const val SNIPPET_RULE = 4
 
+    /**
+     * VS Code's `defaultComparator`: `sortText` ignoring case, then the label, then the kind.
+     *
+     * Not the order of the reply: rust-analyzer states its relevance in `sortText` and sends the
+     * items in whatever order it collected them. VS Code compares `sortText` only when both items
+     * have one, which is not a consistent order when only some do; an item without one is ranked
+     * by its label in that place instead. Before any of this VS Code ranks by how well the typed
+     * prefix matches, which IntelliJ's own matching still decides here.
+     */
+    val VS_CODE_ORDER: Comparator<CompletionItem> =
+        compareBy<CompletionItem> { (it.sortText ?: it.label).lowercase() }
+            .thenBy { it.label }
+            .thenBy { it.kind ?: 0 }
+
     fun parse(reply: String): CompletionList {
         val result = json(reply) ?: return CompletionList(emptyList(), null)
         val default = Range.from(result["a"])
