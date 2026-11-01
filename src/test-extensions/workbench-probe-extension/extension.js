@@ -11,6 +11,7 @@ function activate(context) {
     require('./runtime-probe').install(context);
     require('./window-probe').install(context);
     require('./testing-probe').install(context);
+    require('./notebook-probe').install(context);
     // GitLens serves its revisions as a file system of its own scheme, not a content provider.
     const changes = new vscode.EventEmitter();
     context.subscriptions.push(vscode.workspace.registerFileSystemProvider('probe', {

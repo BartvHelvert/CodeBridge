@@ -28,6 +28,21 @@ class DocumentSelectorTest {
     }
 
     @Test
+    fun `a cell matches by its notebook's type and its own scheme`() {
+        fun cell(selector: String, notebookType: String = "jupyter-notebook") = DocumentSelector.matches(
+            Json.parseToJsonElement(selector), "python", "/c:/work/a.ipynb", Notebooks.CELL_SCHEME, notebookType,
+        )
+        assertTrue(cell("""[{"language":"python","notebookType":"jupyter-notebook"}]"""))
+        assertTrue(cell("""[{"language":"python","notebookType":"*"}]"""))
+        assertFalse(cell("""[{"language":"python","notebookType":"interactive"}]"""))
+        // A selector for files on disk does not claim a cell, as in VS Code; one for the language does.
+        assertFalse(cell("""[{"language":"python","scheme":"file"}]"""))
+        assertTrue(cell("""[{"language":"python","scheme":"vscode-notebook-cell"}]"""))
+        assertTrue(cell("""[{"language":"python"}]"""))
+        assertTrue(cell("""["python"]"""))
+    }
+
+    @Test
     fun `matches glob patterns`() {
         assertTrue(matches("""[{"pattern":"**/*.rs"}]"""))
         assertTrue(matches("""[{"pattern":"*.{rs,toml}"}]"""))

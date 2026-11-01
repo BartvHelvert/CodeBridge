@@ -39,6 +39,7 @@ import me.helvert.codebridge.exthost.*
 import me.helvert.codebridge.exthost.protocol.payload.*
 import me.helvert.codebridge.language.HostedLanguageServers.Companion.HOST_STORAGE
 import me.helvert.codebridge.launch.CodeBridgeDebugSessions
+import me.helvert.codebridge.manifest.VsixManifestParser
 import me.helvert.codebridge.launch.CodeBridgeStartDebugging
 import me.helvert.codebridge.settings.VsCodeRuntime
 import me.helvert.codebridge.settings.VsCodeUnavailableException
@@ -618,31 +619,56 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
     suspend fun activate(extensionId: String, event: String) {
         check(!disposed && !project.isDisposed) { "Project is closed" }
         val activation = withContext(worker) {
-            var startup: HostedProgress.Own? = null
-            try {
-                check(!disposed && !project.isDisposed) { "Project is closed" }
-                val installed = ProjectExtensions.getInstance(project).enabled()
-                val extension = installed.firstOrNull { it.id == extensionId }
-                    ?: throw IllegalStateException("$extensionId is not enabled")
-                if (host == null) {
-                    if (runtimeAvailable()) startup = progress.own(startingTitle(listOf(extension)))
-                    try { start(installed) { step -> startup?.text(step) } } catch (failure: Throwable) { stop(); throw failure }
-                }
-                val session = checkNotNull(host) { "The extension host is not running" }
-                // As for a file: the host's start is shown, the activation is not.
-                startup?.end()
-                if (extension.manifest.main == null) return@withContext null
-                val identifier = ExtensionHostInitData.identifier(extension.id)
-                val reason = buildJsonObject {
-                    put("startup", false); put("activationEvent", event); put("extensionId", identifier)
-                }
-                activated.getOrPut(extension.id) { activation(session, extension, "[$identifier,$reason]") }
-            } catch (failure: Throwable) {
-                startup?.end()
-                throw failure
+            check(!disposed && !project.isDisposed) { "Project is closed" }
+            val installed = ProjectExtensions.getInstance(project).enabled()
+            val extension = installed.firstOrNull { it.id == extensionId }
+                ?: throw IllegalStateException("$extensionId is not enabled")
+            val session = startedHost(installed, listOf(extension))
+            if (extension.manifest.main == null) return@withContext null
+            val identifier = ExtensionHostInitData.identifier(extension.id)
+            val reason = buildJsonObject {
+                put("startup", false); put("activationEvent", event); put("extensionId", identifier)
             }
+            activated.getOrPut(extension.id) { activation(session, extension, "[$identifier,$reason]") }
         }
         activation?.await()
+    }
+
+    /**
+     * Fires the activation event [event] -- `onNotebook:<type>` -- in the host, as VS Code does for an
+     * event that names no extension: the host activates every one whose manifest lists it, built-in
+     * extensions too. Returns once those have activated.
+     *
+     * Starts the host first if none runs, unless not to [startHost]: then there is nothing to do.
+     */
+    suspend fun activateByEvent(event: String, startHost: Boolean = true) {
+        check(!disposed && !project.isDisposed) { "Project is closed" }
+        val session = withContext(worker) {
+            check(!disposed && !project.isDisposed) { "Project is closed" }
+            if (host == null && !startHost) return@withContext null
+            val installed = ProjectExtensions.getInstance(project).enabled()
+            startedHost(installed, installed.filter { event in it.manifest.activationEvents })
+        } ?: return
+        // `ActivationKind.Normal`: after the host's startup, as every event but `*` is.
+        session.call("ExtHostExtensionService", $$"$activateByEvent", buildJsonArray { add(event); add(0) }.toString())
+    }
+
+    /**
+     * The running host, started first for [installed] if none runs, its start shown as that of
+     * [waking]; the activation that follows is not shown, as for a file. On [worker].
+     */
+    private fun startedHost(installed: List<InstalledExtension>, waking: List<InstalledExtension>): ExtensionHostSession {
+        if (host == null) {
+            val startup = if (runtimeAvailable()) progress.own(startingTitle(waking)) else null
+            try {
+                start(installed) { step -> startup?.text(step) }
+            } catch (failure: Throwable) {
+                stop(); throw failure
+            } finally {
+                startup?.end()
+            }
+        }
+        return checkNotNull(host) { "The extension host is not running" }
     }
 
     /** Runs [command] as an extension's `executeCommand` would; fails when no host is running. */
@@ -784,12 +810,17 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
         val workspaceData = ExtensionHostInitData.workspaceData(workbench.storage.workspaceId, workbench.layout)
         session = ExtensionHostSession(
             installation,
-            installed.map { ExtensionHostInitData.describeExtension(it.manifest, locations.getValue(it.id)) }, storage,
+            installed.map { ExtensionHostInitData.describeExtension(it.manifest, locations.getValue(it.id)) } +
+                builtinExtensions(installation), storage,
             object : MainThreadHandler {
                 override fun handle(call: MainThreadCall): String? = this@HostedLanguageServers.handle(call)
                 override suspend fun answer(call: MainThreadCall): MainThreadResult =
+                    // Only a module's own services read a `SerializableObjectWithBuffers` argument's
+                    // bytes; any other would take its JSON alone, and act on it with the bytes missing.
+                    if (call.objectBuffers.values.any { it.isNotEmpty() } && CodeBridgeHostService.forService(call.service) == null)
+                        throw MainThreadException("Unavailable", "Nested binary arguments are not supported by ${call.service}.${call.method}")
                     // Asynchronous because the reply is the user's answer, which may take minutes.
-                    if (call.service == Messages.SERVICE) messages.handle(call)
+                    else if (call.service == Messages.SERVICE) messages.handle(call)
                     // Asynchronous because it is applied on the editor thread, which may itself be
                     // waiting on the host -- a code action running the command that sent this.
                     else if (call.service == WorkspaceEdit.SERVICE && call.method == WorkspaceEdit.TRY_APPLY)
@@ -832,7 +863,9 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
                     else if (isInstallFromVsix(call)) installPayload(call)
                     // Before the workbench, whose file system is the files on disk alone.
                     else if (extensionFileSystem(call)) MainThreadResult()
-                    else workbench.handle(call) ?: MainThreadResult(handle(call))
+                    // A module's own, such as notebooks'; see [CodeBridgeHostService].
+                    else CodeBridgeHostService.forService(call.service)?.answer(project, call)
+                        ?: workbench.handle(call) ?: MainThreadResult(handle(call))
             },
             workspace = workspaceData, configuration = workbench.configuration.snapshot(),
             globalStorageHome = workbench.storage.globalHome, workspaceStorageHome = workbench.storage.workspaceHome,
@@ -866,6 +899,13 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
         HostedContentProviders.getInstance(project).hostStarted(session)
         decorations.hostStarted { service, method, args -> session.call(service, method, args, true) }
         testing.hostStarted { service, method, args, cancellable -> session.call(service, method, args, cancellable) }
+        val services = object : CodeBridgeHostService.Host {
+            override suspend fun call(
+                service: String, method: String, argsJson: String, cancellable: Boolean,
+                buffers: Map<Int, ByteArray>, objectBuffers: Map<Int, List<ByteArray>>, timesOut: Boolean,
+            ): HostReply = session.callWithBuffers(service, method, argsJson, cancellable, buffers, objectBuffers, timesOut)
+        }
+        CodeBridgeHostService.all.forEach { it.hostStarted(project, services) }
         status("Watching the workspace")
         workbench.startWatching()
         // Registers a native watch for every directory under the workspace that no exclude covers.
@@ -997,6 +1037,19 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
         )
     }
 
+    /**
+     * The built-in extensions the [CodeBridgeHostService]s ask the host to run, as the host is told of
+     * them: in place in the runtime, which nothing writes to.
+     */
+    private fun builtinExtensions(installation: VsCodeInstallation): List<JsonObject> =
+        CodeBridgeHostService.all.flatMap { it.builtinExtensions(installation.builtinExtensions) }.distinct()
+            .mapNotNull { directory ->
+                val manifest = runCatching { Files.readString(directory.resolve("package.json")) }
+                    .map { VsixManifestParser.parse(it).manifest }.getOrNull()
+                if (manifest == null) LOG.warn("Could not read the built-in extension in $directory")
+                manifest?.let { ExtensionHostInitData.describeExtension(it, directory, builtin = true) }
+            }
+
     /** Why a call for a service that only lives while a host runs finds none. */
     private fun stopping() = IllegalStateException("The extension host is stopping")
 
@@ -1109,6 +1162,7 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
             HostedBreakpoints.getInstance(project).hostStopped()
             CodeBridgeEditorDecorations.getInstance(project).hostStopped()
             testing.hostStopped()
+            CodeBridgeHostService.all.forEach { it.hostStopped(project) }
             messages.hostStopped()
             HostedClient.getInstance(project).hostStopped()
         }

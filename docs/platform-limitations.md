@@ -40,6 +40,8 @@ entries say so, and say what such a build loses.
     - [Frontend-friendly completion items get no backend step](#frontend-friendly-completion-items-get-no-backend-step)
     - [The frontend guesses Enter without the file's language](#the-frontend-guesses-enter-without-the-files-language)
     - [No public way to forward a backend port to the client](#no-public-way-to-forward-a-backend-port-to-the-client)
+    - [A frontend editor cannot open a backend file](#a-frontend-editor-cannot-open-a-backend-file)
+    - [The Structure view cannot outline a client-only editor](#the-structure-view-cannot-outline-a-client-only-editor)
 - [Editing](#editing)
     - [TextMate files never split brackets on Enter](#textmate-files-never-split-brackets-on-enter)
 - [Settings and UI](#settings-and-ui)
@@ -444,6 +446,77 @@ callbacks are served on the client's built-in web server instead, which needs no
 **What would fix it.** A public backend API to forward a backend port to the controller client and
 get back the client-side address, as VS Code's tunnel service does -- which `$asExternalUri` could
 answer with -- and a way to learn whether a browse request was allowed.
+
+### A frontend editor cannot open a backend file
+
+**What VS Code offers.** A notebook file opens in the notebook editor wherever the window is: the
+workbench picks the editor, and in a remote window that is the local one.
+
+**What the platform offers.** In split mode the backend picks the editors of a project file, from
+the `fileEditorProvider`s registered on its own side, and the client shows them: text editors as
+its own, anything else as the backend's Swing drawn remotely, if at all. A `fileEditorProvider`
+registered on the client is asked only about files the client made itself. The way the platform's
+own split editors cross -- a backend editor model the client turns into its editor
+(`FrontendFileEditorModelHandler`) -- is internal, and built on the rd protocol's generated models.
+
+**What CodeBridge does.** A notebook's editor is drawn on the client, from the notebook the backend
+keeps. In one process the IDE asks the provider about the file itself. In a split-mode client the
+backend opens the file as text; the client then opens a frontend-only tab standing for the file,
+as it opens a webview panel, and closes the text (`CodeBridgeNotebooks`). The tab is not the project file:
+Select Opened File and the tab's file actions see a stand-in, and a notebook open when the project
+is closed comes back as its text, then as the notebook once the client has the notebook types.
+
+**What would fix it.** A public way for a client-side `fileEditorProvider` to take part when the
+backend picks the editors of a project file, so a plugin can draw a file's editor on the client
+from state it keeps on the backend.
+
+### A client-only document gets no IDE language features
+
+**What VS Code offers.** Each notebook cell is a text document of its own, and every language feature
+an extension provides -- completion, hover, definitions, problems -- works in it as in a file, from
+whichever extensions claim the cell by its language or its notebook's type.
+
+**What the platform offers.** In split mode a feature runs where the document's file lives: the
+client sends completion to the backend, which runs the completion contributors against its copy of
+the document and sends the items back to be drawn. A document the client made itself -- a notebook
+cell's, in an editor embedded in the client's notebook editor -- has no copy on the backend, so
+completion there finds nothing, and the client runs none itself: `FrontendCompletionContributor` is
+internal, documented as not supported yet. The same holds for annotators, documentation and Go to
+Declaration. Making the cell a backend document instead needs an editor of a backend document embedded
+in a client component, which [the notebook editor cannot have either](#a-frontend-editor-cannot-open-a-backend-file).
+
+**What CodeBridge does.** Each cell's features are asked of the extension host through the notebook's
+own RPC, under the cell's URI, and drawn by the cell itself (`CellLanguage`): completions in a lookup
+it opens through `LookupManager`, as a word is typed or on completion's keys; problems as range
+highlighters; hovers in a popup of their own; definitions followed on Go to Declaration's keys and
+click, registered on the cell's editor ahead of the IDE's actions. None of the IDE's own completion
+settings, documentation popup or navigation history apply to them.
+
+**What would fix it.** Completion contributors, annotators and documentation and navigation targets
+that run on the client for a document the client owns, or a public way to embed an editor of a
+backend document -- one the backend runs those features for -- in a component the client draws.
+
+### The Structure view cannot outline a client-only editor
+
+**What VS Code offers.** The Outline view outlines the active notebook as it does a file: its markdown
+headings, nested by level, and its code cells under them.
+
+**What the platform offers.** A `FileEditor` outlines itself through `getStructureViewBuilder()`,
+which the Structure tool window and the File Structure popup ask of the selected editor. In split
+mode the client lists the Structure tool window, but the backend runs it (`StructureViewWrapperImpl`),
+for the file selected in the backend's `FileEditorManager` for that client. A client's
+[frontend-only tab](#a-frontend-editor-cannot-open-a-backend-file) has no editor there, so the
+client's `getStructureViewBuilder()` is never asked and the view shows the last backend file
+instead. `StructureViewWrapper.selectCurrentElement` can point the backend's view at a file, but the
+view goes back to the backend's selected editor at its next update.
+
+**What CodeBridge does.** The notebook editor outlines itself (`NotebookStructure`), so in one
+process the Structure view and File Structure popup show the notebook's headings and code cells and
+go to them. In a split-mode client the Structure view shows nothing for a notebook.
+
+**What would fix it.** A Structure view that asks the client's selected editor for its structure when
+that editor is the client's own, or a public way for a client-only tab to name the backend file the
+Structure view should outline, with a builder the backend provides.
 
 ## Editing
 

@@ -60,6 +60,10 @@ dependencies {
         pluginModule(implementation(project(":testrunner.backend")))
         if (withInternalApi) pluginModule(implementation(project(":internal.backend")))
         pluginModule(implementation(project(":webview.frontend")))
+        pluginModule(implementation(project(":notebook.shared")))
+        pluginModule(implementation(project(":notebook.backend")))
+        pluginModule(implementation(project(":notebook.frontend")))
+        pluginModule(implementation(project(":notebook.webview.frontend")))
     }
 }
 

@@ -1,0 +1,21 @@
+<idea-plugin>
+    <dependencies>
+        <module name="intellij.platform.backend"/>
+        <module name="intellij.platform.rpc.backend"/>
+        <module name="intellij.platform.project"/>
+        <module name="CodeBridge.backend"/>
+        <module name="CodeBridge.protocol"/>
+        <module name="CodeBridge.shared"/>
+        <module name="CodeBridge.notebook.shared"/>
+    </dependencies>
+    <extensions defaultExtensionNs="com.intellij">
+        <platform.rpc.backend.remoteApiProvider implementation="me.helvert.codebridge.notebook.NotebookRpcApiProvider"/>
+        <!-- A closed notebook whose changes could not be written. The frontend's group is not loaded
+             in a split backend, hence one of its own here. -->
+        <notificationGroup id="CodeBridge notebooks" displayType="BALLOON"/>
+    </extensions>
+    <extensions defaultExtensionNs="me.helvert.codebridge">
+        <!-- The extension host's notebook services: serializers, open notebooks, kernels and their runs. -->
+        <hostService implementation="me.helvert.codebridge.notebook.NotebookHostService"/>
+    </extensions>
+</idea-plugin>

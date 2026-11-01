@@ -1,0 +1,13 @@
+<idea-plugin>
+    <dependencies>
+        <module name="CodeBridge.notebook.frontend"/>
+        <module name="intellij.platform.frontend"/>
+        <plugin id="com.intellij.modules.jcef"/>
+        <module name="intellij.platform.ui.jcef"/>
+        <module name="intellij.libraries.jcef"/>
+    </dependencies>
+    <extensions defaultExtensionNs="me.helvert.codebridge">
+        <!-- Notebook outputs that need a browser: HTML with scripts, and SVG. -->
+        <notebookBrowserOutput implementation="me.helvert.codebridge.notebook.webview.BrowserOutputs"/>
+    </extensions>
+</idea-plugin>

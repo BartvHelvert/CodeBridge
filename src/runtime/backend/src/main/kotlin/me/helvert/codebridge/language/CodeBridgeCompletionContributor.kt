@@ -5,7 +5,6 @@ import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.codeInsight.template.TemplateManager
 import com.intellij.codeInsight.template.impl.ConstantNode
-import com.intellij.icons.AllIcons
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.Document
@@ -17,8 +16,10 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.launch
 import me.helvert.codebridge.completion.CodeBridgeCommandInsertHandler
 import me.helvert.codebridge.completion.CodeBridgeInsertHandler
+import me.helvert.codebridge.completion.VsCodeCompletions
 import me.helvert.codebridge.exthost.protocol.payload.CodeActions
 import me.helvert.codebridge.exthost.protocol.payload.CompletionItem
+import me.helvert.codebridge.exthost.protocol.payload.Completions
 import javax.swing.Icon
 import kotlin.coroutines.cancellation.CancellationException
 
@@ -191,19 +192,8 @@ internal class CodeBridgeCompletionContributor : CompletionContributor() {
 
         private val LOG = Logger.getInstance(CodeBridgeCompletionContributor::class.java)
 
-        /**
-         * VS Code's `defaultComparator`: `sortText` ignoring case, then the label, then the kind.
-         *
-         * Not the order of the reply: rust-analyzer states its relevance in `sortText` and sends the
-         * items in whatever order it collected them. VS Code compares `sortText` only when both items
-         * have one, which is not a consistent order when only some do; an item without one is ranked
-         * by its label in that place instead. Before any of this VS Code ranks by how well the typed
-         * prefix matches, which IntelliJ's own matching still decides here.
-         */
-        val VS_CODE_ORDER: Comparator<CompletionItem> =
-            compareBy<CompletionItem> { (it.sortText ?: it.label).lowercase() }
-                .thenBy { it.label }
-                .thenBy { it.kind ?: 0 }
+        /** See [Completions.VS_CODE_ORDER], which a notebook cell's completions are ranked by too. */
+        val VS_CODE_ORDER: Comparator<CompletionItem> = Completions.VS_CODE_ORDER
 
         /**
          * Inserts as [insert] does, then runs the item's [command], as the workbench does once an
@@ -258,42 +248,10 @@ internal class CodeBridgeCompletionContributor : CompletionContributor() {
             )
         }
 
-        /**
-         * Where the word ending at [offset] begins, by VS Code's default word definition: anything but
-         * whitespace and the punctuation it lists.
-         */
-        fun wordStart(text: CharSequence, offset: Int): Int {
-            var start = offset
-            while (start > 0 && !text[start - 1].isWhitespace() && text[start - 1] !in SEPARATORS) start--
-            return start
-        }
+        /** See [VsCodeCompletions.wordStart], which a notebook cell's completions start from too. */
+        fun wordStart(text: CharSequence, offset: Int): Int = VsCodeCompletions.wordStart(text, offset)
 
-        /** The punctuation in VS Code's `DEFAULT_WORD_REGEXP`, which no word contains. */
-        private const val SEPARATORS = "`~!@#$%^&*()-=+[{]}\\|;:'\",.<>/?"
-
-        /**
-         * VS Code's `CompletionItemKind`, as the editor numbers it.
-         *
-         * The numbering is the workbench's own and does not match LSP's -- the host has already
-         * converted it. Only the kinds with an obvious IntelliJ icon are mapped; the rest get none,
-         * which reads better than a misleading one.
-         */
-        fun icon(kind: Int?): Icon? = when (kind) {
-            0 -> AllIcons.Nodes.Method
-            1 -> AllIcons.Nodes.Function
-            2 -> AllIcons.Nodes.Method
-            3 -> AllIcons.Nodes.Field
-            4 -> AllIcons.Nodes.Variable
-            5 -> AllIcons.Nodes.Class
-            6 -> AllIcons.Nodes.Static
-            7 -> AllIcons.Nodes.Interface
-            8 -> AllIcons.Nodes.Module
-            9 -> AllIcons.Nodes.Property
-            14 -> AllIcons.Nodes.Enum
-            15 -> AllIcons.Nodes.Enum
-            18 -> AllIcons.Nodes.Tag
-            27 -> AllIcons.Nodes.Folder
-            else -> null
-        }
+        /** See [VsCodeCompletions.icon], which a notebook cell's completions are drawn with too. */
+        fun icon(kind: Int?): Icon? = VsCodeCompletions.icon(kind)
     }
 }

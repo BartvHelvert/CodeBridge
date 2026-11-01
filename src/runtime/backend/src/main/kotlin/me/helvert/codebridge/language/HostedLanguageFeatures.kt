@@ -8,6 +8,7 @@ import com.intellij.codeInsight.codeVision.CodeVisionHost
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
 import com.intellij.codeInsight.folding.CodeFoldingManager
 import com.intellij.ide.structureView.StructureViewFactory
+import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.readAction
@@ -23,6 +24,7 @@ import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.progress.runBlockingMaybeCancellable
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiManager
@@ -713,6 +715,23 @@ class HostedLanguageFeatures(
         return of(problems) + of(taskProblems)
     }
 
+    /** The problems currently reported for the document the host holds under [uri]: a notebook cell's. */
+    fun problemsFor(uri: String): List<Marker> {
+        val key = runCatching { UriComponents.key(uri) }.getOrNull() ?: return emptyList()
+        return problems[key]?.entries?.sortedBy { it.key }?.flatMap { it.value }.orEmpty()
+    }
+
+    /**
+     * Tells [listener] the key -- see [UriComponents.key] -- of each document whose problems change,
+     * until [parent] is disposed: how a document that is no file hears its problems are to be redrawn.
+     */
+    fun onProblemsChanged(parent: Disposable, listener: (key: String) -> Unit) {
+        problemListeners += listener
+        Disposer.register(parent) { problemListeners -= listener }
+    }
+
+    private val problemListeners = java.util.concurrent.CopyOnWriteArrayList<(String) -> Unit>()
+
     /**
      * Files what a task's problem matcher [owner] found in [file], replacing what it said before;
      * null withdraws it. See [me.helvert.codebridge.task.TaskProblems].
@@ -1295,6 +1314,21 @@ class HostedLanguageFeatures(
         val path = resourceOf(file)?.path ?: return emptyList()
         return entries.filter { DocumentSelector.matches(it.value, languageId, path) }.map { it.key }
     }
+
+    /** The same, for a document the host holds that is no file: by its own scheme, and its notebook's type. */
+    private fun claiming(document: HostDocument, selectors: Map<Int, JsonElement?>): List<Int> {
+        val resource = runCatching { UriComponents.of(document.uri) }.getOrNull() ?: return emptyList()
+        return selectors.entries.sortedBy { it.key }
+            .filter { DocumentSelector.matches(it.value, document.languageId, resource.path, resource.scheme, document.notebookType) }
+            .map { it.key }
+    }
+
+    /**
+     * A document the host holds that is no file of the IDE's: a notebook cell, which the notebook's
+     * own editor shows and keeps the host's copy of. Asked about by [uri], as VS Code asks; the
+     * providers that claim it are found by its [languageId] and [notebookType].
+     */
+    data class HostDocument(val uri: String, val languageId: String, val notebookType: String? = null)
 
     fun hasInlayHintProviders(): Boolean = inlayHintProviders.isNotEmpty()
 
@@ -2387,12 +2421,23 @@ class HostedLanguageFeatures(
      * ([resolveCompletion]). Those lists are [held] until nothing can be chosen from them.
      */
     fun completions(file: VirtualFile, line: Int, column: Int): List<CompletionItem> {
-        val call = callHost ?: return emptyList()
         val resource = resourceOf(file) ?: return emptyList()
-        val position = Position(line, column)
+        val handles = claiming(file, completionProviders)
         // All at once; the lookup going away withdraws every question still open, not just the one waited on.
-        return runBlockingMaybeCancellable {
-            claiming(file, completionProviders).map { handle ->
+        return runBlockingMaybeCancellable { completions(resource, handles, line, column) }
+    }
+
+    /** The same, for a document the host holds that is no file: a notebook cell. */
+    suspend fun completions(document: HostDocument, line: Int, column: Int): List<CompletionItem> {
+        val resource = runCatching { UriComponents.of(document.uri) }.getOrNull() ?: return emptyList()
+        return completions(resource, claiming(document, completionProviders), line, column)
+    }
+
+    private suspend fun completions(resource: UriComponents, handles: List<Int>, line: Int, column: Int): List<CompletionItem> {
+        val call = callHost ?: return emptyList()
+        val position = Position(line, column)
+        return coroutineScope {
+            handles.map { handle ->
                 async(start = CoroutineStart.UNDISPATCHED) {
                     val args = LanguageFeatures.provideCompletions(handle, resource, position)
                     try {
@@ -2485,6 +2530,21 @@ class HostedLanguageFeatures(
             val args = LanguageFeatures.provideHover(handle, resource, position)
             val reply = awaitCancellable("Hover provider $handle", HOVER_TIMEOUT_SECONDS) {
                 // Cancellable: the host appends the token itself, so it is absent from the arguments.
+                call(EXT_HOST_LANGUAGE_FEATURES, LanguageFeatures.PROVIDE_HOVER, args, true)
+            } ?: continue
+            LanguageFeatures.hoverText(reply)?.let { return it }
+        }
+        return null
+    }
+
+    /** The same, for a document the host holds that is no file: a notebook cell. */
+    suspend fun hover(document: HostDocument, line: Int, column: Int): String? {
+        val call = callHost ?: return null
+        val resource = runCatching { UriComponents.of(document.uri) }.getOrNull() ?: return null
+        val position = Position(line, column)
+        for (handle in claiming(document, hoverProviders)) {
+            val args = LanguageFeatures.provideHover(handle, resource, position)
+            val reply = asked("Hover provider $handle", HOVER_TIMEOUT_SECONDS) {
                 call(EXT_HOST_LANGUAGE_FEATURES, LanguageFeatures.PROVIDE_HOVER, args, true)
             } ?: continue
             LanguageFeatures.hoverText(reply)?.let { return it }
@@ -2637,6 +2697,22 @@ class HostedLanguageFeatures(
      */
     fun definitions(file: VirtualFile, line: Int, column: Int): List<LanguageFeatures.DefinitionLink> =
         locations(file, line, column, definitionProviders, LanguageFeatures.PROVIDE_DEFINITION)
+
+    /** The same, for a document the host holds that is no file: a notebook cell. */
+    suspend fun definitions(document: HostDocument, line: Int, column: Int): List<LanguageFeatures.DefinitionLink> {
+        val call = callHost ?: return emptyList()
+        val resource = runCatching { UriComponents.of(document.uri) }.getOrNull() ?: return emptyList()
+        val position = Position(line, column)
+        val links = mutableListOf<LanguageFeatures.DefinitionLink>()
+        for (handle in claiming(document, definitionProviders)) {
+            val args = LanguageFeatures.provideDefinition(handle, resource, position)
+            val reply = asked("Definition provider $handle", DEFINITION_TIMEOUT_SECONDS) {
+                call(EXT_HOST_LANGUAGE_FEATURES, LanguageFeatures.PROVIDE_DEFINITION, args, true)
+            } ?: continue
+            links += LanguageFeatures.definitionLinks(reply)
+        }
+        return links.distinct()
+    }
 
     /** Whether a definition provider claims [file]; one that does answers for it, even with nothing. */
     fun canFindDefinitions(file: VirtualFile): Boolean =
@@ -3323,6 +3399,16 @@ class HostedLanguageFeatures(
         }
     }
 
+    /** [awaitCancellable] for a caller that is a coroutine already: null, and logged, when [request] fails. */
+    private suspend fun asked(what: String, timeoutSeconds: Long, request: suspend () -> String): String? = try {
+        within(timeoutSeconds, request)
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (failure: Exception) {
+        LOG.debug("$what failed", failure)
+        null
+    }
+
     /**
      * [request], failing with a [TimeoutException] after [timeoutSeconds]: not with a cancellation,
      * which a caller would take for its own.
@@ -3666,6 +3752,8 @@ class HostedLanguageFeatures(
      * server that reports a problem a second after open would appear to report nothing.
      */
     private fun rehighlight(key: String, uri: String = key) {
+        // Documents that are no files -- notebook cells -- are drawn by whoever listens for them.
+        problemListeners.forEach { it(key) }
         // Mirrored files first: that map is what the plugin itself opened. An extension may also
         // report a problem in a file it was never asked about -- a header, an import target -- and
         // if that one happens to be open it has to repaint too, so fall back to resolving the URI.
