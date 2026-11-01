@@ -215,14 +215,19 @@ internal class CodeBridgeInlineCompletionLists(private val project: Project, pri
 
     private data class Held(val handle: Int, val id: Int)
 
-    /** The items with a command a suggestion hidden without being accepted offered, and its lists. */
+    /** The items with a command a suggestion hidden in [editor] without being accepted offered, and its lists. */
     private class Left(
-        val document: Document,
+        val editor: Editor,
         val offered: List<CodeBridgeInlineCompletionProvider.Offered>,
         val lists: List<Held>
-    )
+    ) {
+        val document: Document get() = editor.document
+    }
 
-    /** Taken by [accepted], or let go [LEFT_MILLIS] after the suggestion was hidden. */
+    /**
+     * Taken by [accepted], or let go [LEFT_MILLIS] after the suggestion was hidden, or when its editor
+     * goes: a client can no longer insert into it, and a later item with the same text must not match.
+     */
     private val left: MutableSet<Left> = ConcurrentHashMap.newKeySet()
 
     /** Keeps [answers] in the host until the suggestion shown in [editor], offering [offered], is hidden. */
@@ -294,7 +299,10 @@ internal class CodeBridgeInlineCompletionLists(private val project: Project, pri
                 hidden(editor, finishType.name == SELECTED)
             }
         })
-        if (holder.replace(RELEASED, null, true)) EditorUtil.disposeWithEditor(editor) { release(take(editor)) }
+        if (holder.replace(RELEASED, null, true)) EditorUtil.disposeWithEditor(editor) {
+            release(take(editor))
+            left.filter { it.editor === editor }.forEach { if (left.remove(it)) release(it.lists) }
+        }
     }
 
     private fun take(editor: Editor): List<Held> = editor.getUserData(HELD)?.let { held ->
@@ -317,8 +325,8 @@ internal class CodeBridgeInlineCompletionLists(private val project: Project, pri
             runAfterInsertion(editor.document, command) { release(lists) }
             return
         }
-        if (selected || offered.isEmpty()) return release(lists)
-        val hidden = Left(editor.document, offered, lists)
+        if (selected || offered.isEmpty() || editor.isDisposed) return release(lists)
+        val hidden = Left(editor, offered, lists)
         left += hidden
         scope.launch {
             delay(LEFT_MILLIS.milliseconds)
