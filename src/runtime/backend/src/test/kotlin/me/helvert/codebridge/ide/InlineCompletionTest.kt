@@ -3,6 +3,7 @@ package me.helvert.codebridge.ide
 import com.intellij.codeInsight.inline.completion.InlineCompletionProvider
 import com.intellij.codeInsight.inline.completion.testInlineCompletion
 import com.intellij.openapi.components.service
+import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.vfs.LocalFileSystem
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Test
 import java.nio.file.Files
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
@@ -24,6 +26,9 @@ class InlineCompletionTest : EditorFixture() {
 
     /** What was asked of the host, by method, with its arguments. */
     private val calls = ConcurrentLinkedQueue<Pair<String, String>>()
+
+    /** The id of the next list the host answers with: each request's list is told apart by it. */
+    private val lists = AtomicInteger(FIRST_LIST)
 
     @AfterEach
     fun forgetSettings() = onEdt {
@@ -63,7 +68,7 @@ class InlineCompletionTest : EditorFixture() {
         assertTrue(executed >= 0, "The command did not run: $methods")
         assertTrue(calls.elementAt(executed).second.contains("acme.accepted"))
         // The command is converted against the list, so the list outlives it.
-        assertTrue(executed < methods.indexOf(FREE), "Freed before the command ran: $methods")
+        assertTrue(executed < calls.indexOfFirst(::freesFirst), "Freed before the command ran: $methods")
     }
 
     @Test
@@ -83,7 +88,7 @@ class InlineCompletionTest : EditorFixture() {
         val methods = calls.map { it.first }
         val executed = methods.indexOf(EXECUTE)
         assertTrue(executed >= 0, "The command did not run: $methods")
-        assertTrue(executed < methods.indexOf(FREE), "Freed before the command ran: $methods")
+        assertTrue(executed < calls.indexOfFirst(::freesFirst), "Freed before the command ran: $methods")
     }
 
     @Test
@@ -115,6 +120,23 @@ class InlineCompletionTest : EditorFixture() {
     }
 
     @Test
+    fun `a dismissed item is forgotten with its editor, so the client taking the same text runs nothing`() {
+        open()
+        fixture.testInlineCompletion {
+            callInlineCompletion()
+            delay()
+            escape()
+            assertInlineHidden()
+        }
+        assertTrue(calls.none { it.first == FREE })
+        onEdt { FileEditorManager.getInstance(fixture.project).closeFile(requireNotNull(fixture.editor.virtualFile)) }
+        // Freed as the editor goes, not when the item would have been let go anyway.
+        assertTrue(calls.any(::freesFirst), "$FREE was not called: ${calls.map { it.first }}")
+        runBlocking { CodeBridgeInlineCompletionLists.getInstance(fixture.project).accepted(ACCEPTED.length, ACCEPTED.hashCode()) }
+        assertTrue(calls.none { it.first == EXECUTE }, calls.map { it.first }.toString())
+    }
+
+    @Test
     fun `nothing is asked with inlineSuggest off`() {
         open(settings = """{"editor.inlineSuggest.enabled": false}""")
         fixture.testInlineCompletion {
@@ -125,11 +147,17 @@ class InlineCompletionTest : EditorFixture() {
         assertTrue(calls.none { it.first == PROVIDE })
     }
 
+    /**
+     * Waits for the first list to be freed. An insertion asks again, and that request's list can be
+     * freed first, before the accepted item's command has run.
+     */
     private fun awaitFreed() {
         val deadline = System.nanoTime() + 10_000_000_000L
-        while (calls.none { it.first == FREE } && System.nanoTime() < deadline) Thread.sleep(10)
-        assertTrue(calls.any { it.first == FREE }, "$FREE was not called: ${calls.map { it.first }}")
+        while (calls.none(::freesFirst) && System.nanoTime() < deadline) Thread.sleep(10)
+        assertTrue(calls.any(::freesFirst), "$FREE was not called: ${calls.map { it.first }}")
     }
+
+    private fun freesFirst(call: Pair<String, String>) = call.first == FREE && call.second.startsWith("[5,$FIRST_LIST,")
 
     /** `print()`, the caret inside the brackets, and an extension that proposes `print("hi")`. */
     private fun open(settings: String = "{}") = onEdt {
@@ -158,10 +186,12 @@ class InlineCompletionTest : EditorFixture() {
         features.callHostForTest { _, method, args, _ ->
             calls += method to args
             
-                if (method == PROVIDE) """{"pid":3,"languageId":"test","items":[{"insertText":"print(\"hi\")",
+                if (method == PROVIDE) {
+                    val pid = lists.getAndIncrement()
+                    """{"pid":$pid,"languageId":"test","items":[{"insertText":"print(\"hi\")",
                     "range":{"startLineNumber":1,"startColumn":1,"endLineNumber":1,"endColumn":8},
-                    "command":{"id":"acme.accepted","title":"","arguments":[42]},"pid":3,"idx":0}]}"""
-                else ""
+                    "command":{"id":"acme.accepted","title":"","arguments":[42]},"pid":$pid,"idx":0}]}"""
+                } else ""
             
         }
     }
@@ -169,6 +199,7 @@ class InlineCompletionTest : EditorFixture() {
     private companion object {
         /** The document with the proposal accepted. */
         const val ACCEPTED = "print(\"hi\")\n"
+        const val FIRST_LIST = 3
         const val PROVIDE = $$"$provideInlineCompletions"
         const val FREE = $$"$freeInlineCompletionsList"
         const val EXECUTE = $$"$executeContributedCommand"
