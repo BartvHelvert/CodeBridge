@@ -29,6 +29,7 @@ import com.intellij.openapi.util.Key
 import com.intellij.platform.project.ProjectId
 import com.intellij.testFramework.LightVirtualFile
 import com.intellij.ui.ColorUtil
+import com.intellij.ui.DoubleClickListener
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.panels.VerticalLayout
@@ -282,12 +283,18 @@ internal class CellView(private val project: Project, cell: CellDto, private val
                 event.component === component && onHandle(event.point) && owner.inMultipleSelection(this@CellView) -> Unit
                 else -> owner.selected(this@CellView)
             }
-            override fun mouseClicked(event: MouseEvent) {
-                if (event.clickCount == 2 && event.component === rendered) focusEditor()
-            }
         }
         component.addMouseListener(select)
         rendered?.addMouseListener(select)
+        // A double-click on a markdown cell's rendering edits it. Heard from the presses and releases
+        // rather than `mouseClicked`, which Swing drops when anything moved between them: on CI the
+        // second of two double-clicks did not edit the cell.
+        if (rendered != null) object : DoubleClickListener() {
+            override fun onDoubleClick(event: MouseEvent): Boolean {
+                focusEditor()
+                return true
+            }
+        }.installOn(rendered)
         dragHandle()
         // The rendering's height follows its width: wrapped again, it is laid out again.
         frame.addComponentListener(object : ComponentAdapter() {
