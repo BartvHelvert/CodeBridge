@@ -153,6 +153,9 @@ open class CodeBridgeDebugRunConfiguration(
      */
     fun attaches(): Boolean = DebugSource.attaches(source, workspace())
 
+    /** Run is hidden for one that [attaches], rather than shown disabled, as it is never offered. */
+    override fun hideDisabledExecutorButtons(): Boolean = attaches()
+
     override fun checkConfiguration() {
         val workspace = workspace() ?: throw RuntimeConfigurationException("The project has no workspace directory")
         val source = source ?: throw RuntimeConfigurationException("Choose a launch configuration")
