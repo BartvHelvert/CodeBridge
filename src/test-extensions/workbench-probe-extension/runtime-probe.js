@@ -16,6 +16,15 @@ exports.install = context => {
             'Probe UI task', 'probe', execution));
         return true;
     }));
+    // As Oracle's Java extension shows a build's output: a pseudoterminal, never closed.
+    context.subscriptions.push(vscode.commands.registerCommand('probe.showPseudoterminal', () => {
+        const output = new vscode.EventEmitter();
+        vscode.window.createTerminal({
+            name: 'Probe pseudoterminal',
+            pty: {onDidWrite: output.event, open: () => output.fire('Probe build output\r\n'), close: () => {}},
+        }).show(true);
+        return true;
+    }));
     context.subscriptions.push(vscode.debug.registerDebugAdapterDescriptorFactory('codebridge-ui-probe', {
         createDebugAdapterDescriptor: session => new vscode.DebugAdapterInlineImplementation(new Adapter(session.configuration.program, state)),
     }));

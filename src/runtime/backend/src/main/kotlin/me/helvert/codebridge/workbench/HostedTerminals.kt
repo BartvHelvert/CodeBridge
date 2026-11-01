@@ -96,7 +96,7 @@ class HostedTerminals(
      * the pseudoterminal closes.
      */
     suspend fun openForTask(name: String): RunTabTerminal {
-        val terminal = RunTabTerminal(nextId.incrementAndGet(), null, name)
+        val terminal = RunTabTerminal(nextId.incrementAndGet(), null, name, run = true)
         terminals[terminal.id.toString()] = terminal
         terminal.open(null, hidden = false)
         terminal.announce(Terminals.launchConfig(name, null, emptyList(), null))
@@ -120,7 +120,7 @@ class HostedTerminals(
         val inToolWindow = !request.pseudoterminal && !request.hideFromUser && !request.strictEnv &&
                 request.env.values.none { it == null } && CodeBridgeToolWindowTerminals.getInstance(project).connected
         if (inToolWindow && toolWindowTerminal(request, name)) return
-        val terminal = RunTabTerminal(nextId.incrementAndGet(), request.extHostId, name)
+        val terminal = RunTabTerminal(nextId.incrementAndGet(), request.extHostId, name, run = false)
         // Registered before anything waits: `sendText` straight after `createTerminal` names this id.
         terminals[terminal.id.toString()] = terminal
         terminals[request.extHostId] = terminal
@@ -276,8 +276,12 @@ class HostedTerminals(
         }
     }
 
-    /** A Run tool window tab: its process, a terminal emulator as its console, and the tab once shown. */
-    inner class RunTabTerminal(id: Int, extHostId: String?, name: String) : Terminal(id, extHostId, name) {
+    /**
+     * A Run tool window tab: its process, a terminal emulator as its console, and the tab once shown.
+     * Only a task's is a [run]; a terminal is not one in VS Code, so the run widget does not count it.
+     */
+    inner class RunTabTerminal(id: Int, extHostId: String?, name: String, private val run: Boolean) :
+        Terminal(id, extHostId, name) {
         @Volatile
         var handler: ExtensionPty? = null
             private set
@@ -362,7 +366,7 @@ class HostedTerminals(
         /** Must run on the editor thread. */
         private fun addTab(activate: Boolean) {
             val process = checkNotNull(process)
-            val descriptor = terminalRunContent(name, process, checkNotNull(console), activate)
+            val descriptor = terminalRunContent(name, process, checkNotNull(console), activate, stoppable = run)
             this.descriptor = descriptor
             // Closing the tab ends the terminal, as closing VS Code's does.
             Disposer.register(descriptor) {

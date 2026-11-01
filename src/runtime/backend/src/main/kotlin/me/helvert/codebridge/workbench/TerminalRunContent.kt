@@ -14,12 +14,17 @@ import javax.swing.JPanel
  * A Run tool window tab for [process] shown in [console], a terminal emulator, with a Stop button
  * beside the console's own actions. Not yet shown: the caller hands it to `RunContentManager`.
  * Must run on the editor thread.
+ *
+ * Unless [stoppable], the tab is not a run: the IDE's Stop actions and the run widget, which count
+ * every tab whose process is alive, leave it out, and no run takes the tab over. Its own Stop button
+ * still stops [process].
  */
 internal fun terminalRunContent(
     name: String,
     process: ProcessHandler,
     console: TerminalExecutionConsole,
-    activate: Boolean
+    activate: Boolean,
+    stoppable: Boolean = true
 ): RunContentDescriptor {
     val actions = DefaultActionGroup().apply {
         add(StopProcessAction("Stop", "Stop the terminal's process", process))
@@ -31,7 +36,10 @@ internal fun terminalRunContent(
         add(console.component, BorderLayout.CENTER)
         add(toolbar.component, BorderLayout.WEST)
     }
-    return RunContentDescriptor(console, process, panel, name, AllIcons.Debugger.Console).apply {
+    return object : RunContentDescriptor(console, process.takeIf { stoppable }, panel, name, AllIcons.Debugger.Console) {
+        // A run may take over a tab whose descriptor has no live process, which this one never has.
+        override fun isContentReuseProhibited() = !stoppable
+    }.apply {
         isActivateToolWindowWhenAdded = activate
         isAutoFocusContent = activate
     }

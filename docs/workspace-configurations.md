@@ -170,6 +170,9 @@ A lens's Run or Debug runs an extension command, which usually ends in one of tw
 A shell terminal an extension opens with `window.createTerminal` is a tab of the Terminal tool
 window. A terminal the extension drives itself (a pseudoterminal) is a Run tool window tab with a
 terminal emulator you can type into, as is every terminal when the Terminal plugin is disabled.
+Such a tab is not a run: its own Stop button ends it, but the Stop button beside the run
+configurations does not count it, so a build log an extension keeps open does not look like a
+running configuration. A custom-execution task's terminal is a run, as every task is.
 
 Variable substitution supports workspace/environment/configuration values and extension commands.
 `${file}`, `${lineNumber}` and `${selectedText}` come from the editor you were in when the launch
