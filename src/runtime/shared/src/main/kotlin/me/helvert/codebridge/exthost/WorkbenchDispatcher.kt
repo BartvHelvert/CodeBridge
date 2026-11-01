@@ -154,7 +154,10 @@ internal class WorkbenchDispatcher(
 
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
-        incoming.values.toList().forEach { it.cancel(CancellationException()) }; incoming.clear()
+        // Iterated in place, not copied: a call that finishes meanwhile takes itself out of the map,
+        // which the map's own iterator allows, and a copy sized before it did does not.
+        incoming.values.forEach { it.cancel(CancellationException()) }
+        incoming.clear()
         handlers.cancel()
         queue.cancel()
     }
