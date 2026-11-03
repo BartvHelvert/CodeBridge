@@ -65,6 +65,19 @@ data class VsCodeInstallation(
      */
     val workbenchExtensions: Path get() = appDirectory.resolve("workbench-extensions")
 
+    /**
+     * VS Code's web worker extension host, which runs the extensions that have only a `browser` entry
+     * in a browser's worker. The bundled runtime takes it from the same release's web package, into
+     * `worker-host/`; desktop VS Code keeps it among its own sources.
+     */
+    val workerHostScript: Path get() = workerHostFile(WORKER_HOST_SCRIPT, "out/vs/workbench/api/worker/$WORKER_HOST_SCRIPT")
+
+    /** The strings [workerHostScript] looks up by number: those of its own build, which may not be the Node host's. */
+    val workerHostMessages: Path get() = workerHostFile(WORKER_HOST_MESSAGES, "out/$WORKER_HOST_MESSAGES")
+
+    private fun workerHostFile(name: String, ownPath: String): Path =
+        appDirectory.resolve("worker-host").resolve(name).takeIf(Files::isRegularFile) ?: appDirectory.resolve(ownPath)
+
     /** The installation root as the user would recognise it, rather than `resources/app`. */
     val root: Path get() = executable.parent ?: appDirectory
 
@@ -149,6 +162,9 @@ data class VsCodeInstallation(
 
         /** Points at an installation directory, overriding the bundled runtime. */
         const val OVERRIDE_ENV: String = "CODEBRIDGE_VSCODE_HOME"
+
+        private const val WORKER_HOST_SCRIPT = "extensionHostWorkerMain.js"
+        private const val WORKER_HOST_MESSAGES = "nls.messages.json"
 
         /**
          * Judges a configured location, and never silently replaces it with another.

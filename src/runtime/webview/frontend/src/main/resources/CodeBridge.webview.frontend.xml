@@ -14,6 +14,8 @@
         <editorTabTitleProvider implementation="me.helvert.codebridge.webview.CodeBridgeWebviewTabTitles"/>
         <fileIconProvider implementation="me.helvert.codebridge.webview.CodeBridgeWebviewIcons"/>
         <postStartupActivity implementation="me.helvert.codebridge.webview.CodeBridgeWebviewsActivity"/>
+        <!-- Web worker extension hosts, each in a browser page that is never shown. -->
+        <postStartupActivity implementation="me.helvert.codebridge.webview.CodeBridgeWorkerHostsActivity"/>
     </extensions>
     <extensions defaultExtensionNs="me.helvert.codebridge">
         <!-- Webview views, in the tool windows the frontend makes for view containers. -->

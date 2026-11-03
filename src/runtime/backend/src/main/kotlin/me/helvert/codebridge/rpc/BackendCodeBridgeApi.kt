@@ -298,6 +298,31 @@ internal class BackendCodeBridgeApi : CodeBridgeApi {
             projectId.findProjectOrNull()?.let { HostedWebviews.getInstance(it).resource(handle, url) }
         }
 
+    override suspend fun workerHosts(projectId: ProjectId): Flow<List<String>> {
+        val project = projectId.findProjectOrNull() ?: return flowOf(emptyList())
+        return HostedWorkerHosts.getInstance(project).wanted
+    }
+
+    override suspend fun workerHostOutbox(projectId: ProjectId, id: String): Flow<List<ByteArray>> {
+        val project = projectId.findProjectOrNull() ?: return emptyFlow()
+        return HostedWorkerHosts.getInstance(project).outbox(id)
+    }
+
+    override suspend fun workerHostInbox(projectId: ProjectId, id: String, messages: List<ByteArray>) {
+        val project = projectId.findProjectOrNull() ?: return
+        HostedWorkerHosts.getInstance(project).inbox(id, messages)
+    }
+
+    override suspend fun workerHostFailed(projectId: ProjectId, id: String, reason: String) {
+        val project = projectId.findProjectOrNull() ?: return
+        HostedWorkerHosts.getInstance(project).failed(id, reason)
+    }
+
+    override suspend fun workerHostResource(projectId: ProjectId, id: String, path: String): WebviewResourceDto? =
+        withContext(Dispatchers.IO) {
+            projectId.findProjectOrNull()?.let { HostedWorkerHosts.getInstance(it).resource(id, path) }
+        }
+
     override suspend fun webviewShown(
         projectId: ProjectId,
         handle: String,
