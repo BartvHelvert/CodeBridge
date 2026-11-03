@@ -12,7 +12,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
-import me.helvert.codebridge.exthost.ExtensionHostSession
+import me.helvert.codebridge.exthost.ExtensionHost
 import me.helvert.codebridge.exthost.MainThreadCall
 import me.helvert.codebridge.exthost.protocol.payload.Messages
 import me.helvert.codebridge.exthost.protocol.payload.StatusBar
@@ -37,12 +37,12 @@ class HostedStatusBar(private val project: Project, private val scope: Coroutine
 
     private val entries = MutableStateFlow<Map<String, StatusBar.Entry>>(emptyMap())
     @Volatile
-    private var session: ExtensionHostSession? = null
+    private var session: ExtensionHost? = null
 
     /** The current items by entry id; the frontend collects this for as long as it shows them. */
     val items: StateFlow<Map<String, StatusBar.Entry>> = entries.asStateFlow()
 
-    fun hostStarted(session: ExtensionHostSession) {
+    fun hostStarted(session: ExtensionHost) {
         this.session = session
     }
 

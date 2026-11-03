@@ -33,7 +33,7 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import me.helvert.codebridge.exthost.ExtensionHostDocuments
-import me.helvert.codebridge.exthost.ExtensionHostSession
+import me.helvert.codebridge.exthost.ExtensionHost
 import me.helvert.codebridge.exthost.MainThreadResult
 import me.helvert.codebridge.exthost.protocol.payload.*
 import me.helvert.codebridge.language.HostedLanguageFeatures.Companion.EDIT_REPORT_EVERY
@@ -301,7 +301,7 @@ class HostedLanguageFeatures(
     /** Whether a host is running to be asked anything; cheap, for deciding whether to ask at all. */
     val hostRunning: Boolean get() = callHost != null
 
-    fun hostStarted(session: ExtensionHostSession) {
+    fun hostStarted(session: ExtensionHost) {
         this.callHost = { service, method, args, cancellable -> session.call(service, method, args, cancellable) }
         this.callHostForBytes = { service, method, args, cancellable ->
             session.callForBytes(service, method, args, cancellable)

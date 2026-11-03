@@ -12,11 +12,12 @@ import java.util.zip.ZipOutputStream
 @ExtendWith(RemoteDevRun::class)
 class SplitModeWebExtensionTest {
     /**
-     * An extension with a `browser` entry and no `main`, as Excalidraw's is: VS Code runs it in its web
-     * worker extension host, and CodeBridge, which has none, in the Node host.
+     * An extension with a `browser` entry and no `main`, as Excalidraw's is, runs in VS Code's web
+     * worker extension host, which the client runs in its browser: its command says it ran in a
+     * worker, which the Node host is not.
      */
     @Test
-    fun `a web extension runs in the extension host`() =
+    fun `a web extension runs in the web worker extension host`() =
         withWorkbenchProbe("split-mode-web-extension", "let value = 1;\n", extensions = listOf(webExtension())) {
             awaitProbeValue<String?>("the web extension's command", { command("webProbe.ran") }) { it == "true" }
         }
@@ -37,7 +38,7 @@ class SplitModeWebExtensionTest {
             entry(
                 "extension/dist/extension.js",
                 """const vscode = require("vscode");
-                  |exports.activate = context => context.subscriptions.push(vscode.commands.registerCommand("webProbe.ran", () => true));
+                  |exports.activate = context => context.subscriptions.push(vscode.commands.registerCommand("webProbe.ran", () => typeof WorkerGlobalScope !== "undefined"));
                   |""".trimMargin(),
             )
         }

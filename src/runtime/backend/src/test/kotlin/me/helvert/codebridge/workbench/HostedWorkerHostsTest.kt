@@ -23,7 +23,7 @@ import kotlin.io.path.writeText
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
+import kotlin.test.assertIs
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
@@ -72,9 +72,9 @@ class HostedWorkerHostsTest {
         assertEquals(emptyList(), hosts.outbox(id).toList())
         assertNull(failure)
 
-        // The client going takes the host with it.
+        // The client going takes the host with it, and says so apart from a failure.
         client.cancelAndJoin()
-        assertNotNull(failure)
+        assertIs<HostedWorkerHosts.ClientGoneException>(failure)
         assertEquals(emptyList(), hosts.wanted.value)
     }
 

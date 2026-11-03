@@ -17,7 +17,7 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
-import me.helvert.codebridge.exthost.ExtensionHostSession
+import me.helvert.codebridge.exthost.ExtensionHost
 import me.helvert.codebridge.exthost.MainThreadCall
 import me.helvert.codebridge.exthost.protocol.payload.Args
 import me.helvert.codebridge.exthost.protocol.payload.DocumentContentProviders
@@ -39,7 +39,7 @@ import kotlin.time.Duration.Companion.seconds
 @Service(Service.Level.PROJECT)
 class HostedContentProviders(private val project: Project) {
 
-    /** Asks the host, as `ExtensionHostSession.call` does; null while none runs. */
+    /** Asks the host, as `ExtensionHost.call` does; null while none runs. */
     @Volatile
     private var callHost: (suspend (String, String, String) -> String)? = null
 
@@ -63,7 +63,7 @@ class HostedContentProviders(private val project: Project) {
      */
     private val opened = HashMap<String, LightVirtualFile>()
 
-    fun hostStarted(session: ExtensionHostSession) {
+    fun hostStarted(session: ExtensionHost) {
         callHost = { service, method, args -> session.call(service, method, args) }
         readFile = { handle, resource ->
             session.callForBytes(

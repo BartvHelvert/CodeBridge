@@ -104,16 +104,19 @@ class ExtensionHostSession(
     /** Those of [extensions] this host runs; it knows of the others, as VS Code's hosts know of each other's. */
     private val myExtensions: List<JsonObject> = extensions,
     private val connection: ExtensionHostConnection = ProcessHostConnection(installation, storageRoot, preloadScript, report),
-) : Closeable {
+) : ExtensionHost, Closeable {
 
     private val outgoingRequestId = AtomicInteger(0)
     private val closed = AtomicBoolean()
     /** Completes once the session has ended, with why. */
-    val termination: Deferred<Throwable> field = CompletableDeferred()
+    override val termination: Deferred<Throwable> field = CompletableDeferred()
 
     private val pending = ConcurrentHashMap<Int, CompletableDeferred<HostReply>>()
     private val activations = ExtensionActivations()
     private val initialized = CompletableDeferred<Unit>()
+
+    /** Completes once the host reported `Initialized` and its barriers are open; fails if it never will. */
+    val ready: Deferred<Unit> get() = initialized
 
     /** Where the session opens the host's barriers; ends with it. */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineName("codebridge-exthost"))
@@ -158,25 +161,16 @@ class ExtensionHostSession(
     }
 
     /**
-     * Calls into the extension host, and returns the raw JSON it replied with; throws when it replied
-     * with an error. Activation also checks the host's separate failure reports, since its
-     * `$activate` reply only says whether the extension was found.
-     *
-     * The call is sent before this first suspends, so calls made one after another reach the host in
-     * that order. Cancelling the caller cancels the call, which a [cancellable] one also tells the
-     * host about.
+     * Calls into the extension host, as [ExtensionHost.call] says. Activation also checks the host's
+     * separate failure reports, since its `$activate` reply only says whether the extension was found.
      */
-    suspend fun call(
+    override suspend fun call(
         service: String,
         method: String,
         argsJson: String,
-        cancellable: Boolean = false,
-        buffers: Map<Int, ByteArray> = emptyMap(),
-        /**
-         * Arguments that are a `SerializableObjectWithBuffers`: their JSON slot holds the value, with
-         * `{"$$ref$$": n}` where the n-th of these buffers goes.
-         */
-        objectBuffers: Map<Int, List<ByteArray>> = emptyMap(),
+        cancellable: Boolean,
+        buffers: Map<Int, ByteArray>,
+        objectBuffers: Map<Int, List<ByteArray>>,
     ): String {
         val reply = request(service, method, argsJson, cancellable, buffers, objectBuffers)
         // A method that answers in bytes, asked for through the JSON accessor: a mistake about the
@@ -194,7 +188,7 @@ class ExtensionHostSession(
      * Null when the host answered `null` instead -- which a provider with nothing to say does, and
      * which arrives as JSON rather than as an empty buffer.
      */
-    suspend fun callForBytes(service: String, method: String, argsJson: String, cancellable: Boolean = false): ByteArray? =
+    override suspend fun callForBytes(service: String, method: String, argsJson: String, cancellable: Boolean): ByteArray? =
         request(service, method, argsJson, cancellable, emptyMap(), emptyMap()).bytes
 
     /**
@@ -202,18 +196,14 @@ class ExtensionHostSession(
      * a notebook's cells, whose outputs are bytes -- sent and cancelled as [call] is. The reply's
      * [HostReply.json] is the value, its [HostReply.buffers] what that value's references name.
      */
-    suspend fun callWithBuffers(
+    override suspend fun callWithBuffers(
         service: String,
         method: String,
         argsJson: String,
-        cancellable: Boolean = false,
-        buffers: Map<Int, ByteArray> = emptyMap(),
-        objectBuffers: Map<Int, List<ByteArray>> = emptyMap(),
-        /**
-         * Whether to give up after [REPLY_SECONDS]; not for a method answered once the work it starts
-         * is done, such as a kernel's `$executeCells`. A host that dies still fails it.
-         */
-        timesOut: Boolean = true,
+        cancellable: Boolean,
+        buffers: Map<Int, ByteArray>,
+        objectBuffers: Map<Int, List<ByteArray>>,
+        timesOut: Boolean,
     ): HostReply = request(service, method, argsJson, cancellable, buffers, objectBuffers, timesOut)
 
     private suspend fun request(

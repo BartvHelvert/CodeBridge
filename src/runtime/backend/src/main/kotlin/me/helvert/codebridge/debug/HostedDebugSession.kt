@@ -39,7 +39,7 @@ class HostedDebugSession(
     settings: JsonObject,
     private val install: (Path) -> InstalledExtension,
     private val report: (String) -> Unit = {},
-    sharedHost: ExtensionHostSession? = null,
+    sharedHost: ExtensionHost? = null,
     sharedLocations: Map<String, Path>? = null,
     private val onClose: () -> Unit = {},
     /** The project host's adapter router, when sessions share it; adapter handles are global. */
@@ -60,8 +60,10 @@ class HostedDebugSession(
         ExtensionHostInitData.describeExtension(extension.manifest, locations.getValue(extension.id)).forEach { (k, v) -> put(k, v) }
         put("targetPlatform", extension.targetPlatform ?: "undefined")
     } }
-    private val host = sharedHost ?: ExtensionHostSession(installation, descriptions, storage, MainThreadHandler(::handle),
+    /** The host this session started for itself, when it shares none. */
+    private val ownHost = if (sharedHost != null) null else ExtensionHostSession(installation, descriptions, storage, MainThreadHandler(::handle),
         workspace = workspaceData(), configuration = configurationData(settings))
+    private val host: ExtensionHost = sharedHost ?: checkNotNull(ownHost)
     private val adapters = sharedAdapters ?: ExtensionHostDebugAdapters(host)
     var configuration: JsonObject = buildJsonObject { }
         private set
@@ -100,11 +102,14 @@ class HostedDebugSession(
             } }
         }
         checkCanceled()
-        if (ownsHost) host.start()
-        require(host.awaitInitialized(30, TimeUnit.SECONDS)) { "Extension host initialization timed out" }
+        // A shared host is the project's, which is initialized before it is shared.
+        ownHost?.let { own ->
+            own.start()
+            require(own.awaitInitialized(30, TimeUnit.SECONDS)) { "Extension host initialization timed out" }
+        }
         val type = raw.getValue("type").jsonPrimitive.content
         for (extension in extensions) {
-            if (extension.manifest.main == null) continue
+            if (extension.manifest.isDeclarativeOnly) continue
             val activated = await(checkCanceled) {
                 host.call("ExtHostExtensionService", $$"$activate", DebugService.debugActivation(extension.id, type))
             }
@@ -297,7 +302,7 @@ class HostedDebugSession(
         // which the client reports as an error although the session was stopped on purpose.
         handle?.close()
         // Host termination also fails all stream readers and pending adapter requests.
-        if (ownsHost) host.close()
+        ownHost?.close()
         scope.cancel()
         onClose()
     }

@@ -62,7 +62,7 @@ class HostedWorkerHosts(private val scope: CoroutineScope) {
                 emit(batch)
             }
         } finally {
-            host.finish(IOException("The client running the web worker extension host went away"))
+            host.finish(ClientGoneException())
         }
     }
 
@@ -88,6 +88,12 @@ class HostedWorkerHosts(private val scope: CoroutineScope) {
         if (!Files.isRegularFile(file)) return null
         return WebviewResourceDto(Files.readAllBytes(file), HostedWebviews.mimeType(file))
     }
+
+    /**
+     * The client running a host went away -- it disconnected, or the IDE is closing -- and the host
+     * with it: nothing went wrong in the host.
+     */
+    class ClientGoneException : IOException("The client running the web worker extension host went away")
 
     /** A connection to one worker host, which also says where the host may fetch an extension's files. */
     sealed interface WorkerHostConnection : ExtensionHostConnection {

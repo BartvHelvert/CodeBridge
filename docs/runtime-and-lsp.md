@@ -20,6 +20,12 @@ web package (`reh-web`) into `runtime/workbench-extensions/`, apart from `extens
 loads what it always has. `BuiltinLanguages` reads both, and a file is opened as the closest claim:
 a name outright, then the longest extension, as VS Code ranks them.
 
+The web package also carries what the REH package has no use for: VS Code's web worker extension
+host, which runs extensions that have only a `browser` entry. The build copies its script and the
+strings it numbers (`nls.messages.json`, which are not the REH package's) into
+`runtime/worker-host/`, and the client runs it in a hidden page of its browser; see
+[architecture](architecture.md#design-decisions). Its rpcIds are the Node host's.
+
 **Settings → Tools → CodeBridge** reports that state and nothing else: which runtime is running and
 the directory it lives in. There is no path to set, no Detect, and no Download or Remove button.
 Extension installation is on the separate **Settings → VS Code Extensions** page.
