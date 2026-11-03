@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+<script>
+// Runs VS Code's web worker extension host, as `webWorkerExtensionHostIframe.html` does in VS Code's
+// window, and passes its messages to and from the IDE. Started with no frame around it: this page is
+// the frame, and the IDE is its parent.
+(function () {
+    const send = function (payload) { /*SEND*/ };
+
+    function toBase64(buffer) {
+        const bytes = new Uint8Array(buffer);
+        let text = '';
+        for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
+        return btoa(text);
+    }
+
+    function fromBase64(text) {
+        const decoded = atob(text);
+        const bytes = new Uint8Array(decoded.length);
+        for (let i = 0; i < decoded.length; i++) bytes[i] = decoded.charCodeAt(i);
+        return bytes.buffer;
+    }
+
+    function fail(error) {
+        send('e' + (error ? (error.stack || error.message || String(error)) : 'unknown error'));
+    }
+
+    // What the host sent, handed over a batch at a time: each message is a call into the IDE.
+    let outgoing = [];
+    function sendLater(buffer) {
+        if (outgoing.length === 0) queueMicrotask(function () {
+            send('m' + outgoing.join(','));
+            outgoing = [];
+        });
+        outgoing.push(toBase64(buffer));
+    }
+
+    // What the IDE sent before the host gave its port, delivered once it has.
+    let port = null;
+    const early = [];
+    window.__codeBridgeDeliver = function (messages) {
+        for (const message of messages) {
+            const buffer = fromBase64(message);
+            if (port) port.postMessage(buffer, [buffer]); else early.push(buffer);
+        }
+    };
+
+    try {
+        const root = location.origin + '/';
+        const source = [
+            `globalThis._VSCODE_NLS_MESSAGES = await (await fetch(${JSON.stringify(root + 'worker/nls.messages.json')})).json();`,
+            `globalThis._VSCODE_NLS_LANGUAGE = 'en';`,
+            `globalThis._VSCODE_FILE_ROOT = ${JSON.stringify(root)};`,
+            `await import(${JSON.stringify(root + 'worker/extensionHostWorkerMain.js')});`,
+        ].join('\n');
+        const worker = new Worker(URL.createObjectURL(new Blob([source], { type: 'application/javascript' })), { name: 'ExtensionHostWorker', type: 'module' });
+        const nested = new Map();
+
+        worker.onmessage = function (event) {
+            const data = event.data;
+            if (data instanceof MessagePort) {
+                port = data;
+                port.onmessage = function (message) {
+                    if (message.data instanceof ArrayBuffer) sendLater(message.data);
+                };
+                worker.postMessage({ type: 'vscode.init', data: new Map() });
+                for (const buffer of early.splice(0)) port.postMessage(buffer, [buffer]);
+                send('c');
+            } else if (data && data.type === '_newWorker') {
+                // A worker an extension starts, which a worker cannot start itself.
+                const created = new Worker(data.url, data.options);
+                created.postMessage(data.port, [data.port]);
+                created.onerror = console.error.bind(console);
+                nested.set(data.id, created);
+            } else if (data && data.type === '_terminateWorker') {
+                const created = nested.get(data.id);
+                if (created) {
+                    created.terminate();
+                    nested.delete(data.id);
+                }
+            }
+        };
+        worker.onerror = function (event) {
+            event.preventDefault();
+            fail(event.error || event.message);
+        };
+    } catch (error) {
+        fail(error);
+    }
+    send('r');
+})();
+</script>
+</body>
+</html>

@@ -272,6 +272,32 @@ interface CodeBridgeApi : RemoteApi<Unit> {
     suspend fun runWebviewLink(projectId: ProjectId, handle: String, uri: String)
 
     /**
+     * The web worker extension hosts the project wants run, by id: VS Code's host for the extensions
+     * that have only a `browser` entry, which runs in a browser, and so in this client's. Each
+     * emission replaces the last. A client runs one by collecting its [workerHostOutbox].
+     */
+    suspend fun workerHosts(projectId: ProjectId): Flow<List<String>>
+
+    /**
+     * Runs worker host [id] in this client, for as long as the flow is collected: what the backend
+     * sends it, whole protocol messages in order, a batch at a time. Only one client runs a host; the
+     * flow of any other ends at once.
+     */
+    suspend fun workerHostOutbox(projectId: ProjectId, id: String): Flow<List<ByteArray>>
+
+    /** What worker host [id] sent, whole protocol messages in the order it sent them. */
+    suspend fun workerHostInbox(projectId: ProjectId, id: String, messages: List<ByteArray>)
+
+    /** Worker host [id] could not start in this client, or stopped; it does not run any more. */
+    suspend fun workerHostFailed(projectId: ProjectId, id: String, reason: String)
+
+    /**
+     * A file worker host [id] fetched, by its path on the host's page: the host's own script and
+     * messages, or a file of one of its extensions. Null for anything else.
+     */
+    suspend fun workerHostResource(projectId: ProjectId, id: String, path: String): WebviewResourceDto?
+
+    /**
      * What the project's extensions do on the user's machine -- open a link in the browser, read or
      * write the clipboard -- for this client to do; each emission replaces the last. A request stays
      * until [answerClientRequest] answers it.

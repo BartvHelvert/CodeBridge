@@ -185,6 +185,20 @@ fun CopySpec.workbenchExtensions() {
 }
 
 /**
+ * VS Code's web worker extension host, as `worker-host/`: the host web extensions run in, which the
+ * frontend starts in its browser, and the messages it is built against. The server package has no
+ * such host; the web package of the same release does, with the Node host's rpcIds. Its messages
+ * are not the server's, which number another build's strings, so they stay beside it.
+ */
+fun CopySpec.workerHost() {
+    from(tarTree(downloadWorkbenchExtensions.flatMap { it.archive })) {
+        include("out/vs/workbench/api/worker/extensionHostWorkerMain.js", "out/nls.messages.json")
+        eachFile { relativePath = RelativePath(true, "worker-host", relativePath.lastName) }
+        includeEmptyDirs = false
+    }
+}
+
+/**
  * The runtime moved under `runtime/`, still as a tar.
  *
  * VSCodium's archive has no top-level directory, and a variant's files land at the plugin root as
@@ -201,6 +215,7 @@ fun bundledRuntime(platform: String): FileTree {
             into("runtime")
         }
         into("runtime") { workbenchExtensions() }
+        into("runtime") { workerHost() }
         into("runtime/licenses") { from(downloadRuntimeLicenses.map { it.flatMap { task -> task.archive } }) }
         archiveFileName = "vscodium-reh-$platform-$vscodiumVersion.tar"
         destinationDirectory = rootProject.layout.buildDirectory.dir("vscodium")
@@ -286,6 +301,7 @@ val extractHostRuntime = tasks.register<Sync>("extractHostRuntime") {
     hostRuntimePlatform?.let { platform ->
         from(tarTree(downloadRuntime.getValue(platform).flatMap { it.archive }))
         workbenchExtensions()
+        workerHost()
     }
     into(hostRuntimeDirectory)
 }
