@@ -75,11 +75,12 @@ fun interface MainThreadHandler {
 }
 
 /**
- * Runs VS Code's extension host as a child process and speaks its protocol.
+ * Runs one of VS Code's extension hosts and speaks its protocol, over whatever [connection] reaches
+ * it: by default the Node host, as a child process.
  *
  * The sequence, all of which was established by observing a real host:
  *
- * 1. create the pipe, then launch the process pointed at it
+ * 1. start the host and connect to it
  * 2. the host sends `Ready`; reply with the initialization payload
  * 3. the host sends `Initialized`
  * 4. open the `ExtHostConfiguration` and `ExtHostWorkspace` barriers, or `activate()` never runs
@@ -100,20 +101,12 @@ class ExtensionHostSession(
     private val workspaceStorageHome: Path = storageRoot.resolve("workspaceStorage"),
     /** Where to say that the protocol itself cost time; no-op outside an IDE. */
     private val report: (String) -> Unit = {},
+    /** Those of [extensions] this host runs; it knows of the others, as VS Code's hosts know of each other's. */
+    private val myExtensions: List<JsonObject> = extensions,
+    private val connection: ExtensionHostConnection = ProcessHostConnection(installation, storageRoot, preloadScript, report),
 ) : Closeable {
 
-    private val pipe: ExtensionHostPipeServer = ExtensionHostPipeServer.create("codebridge-" + UUID.randomUUID())
-    private var channel: ExtensionHostChannel? = null
-    @Volatile
-    private var process: Process? = null
-    private var reader: Thread? = null
-    @Volatile
-    private var writer: FrameWriter? = null
-
-    private val outgoingFrameId = AtomicInteger(0)
     private val outgoingRequestId = AtomicInteger(0)
-    @Volatile
-    private var lastIncomingFrameId = 0
     private val closed = AtomicBoolean()
     /** Completes once the session has ended, with why. */
     val termination: Deferred<Throwable> field = CompletableDeferred()
@@ -122,7 +115,7 @@ class ExtensionHostSession(
     private val activations = ExtensionActivations()
     private val initialized = CompletableDeferred<Unit>()
 
-    /** Where the session watches its process and opens the host's barriers; ends with it. */
+    /** Where the session opens the host's barriers; ends with it. */
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default + CoroutineName("codebridge-exthost"))
     private val calls = CopyOnWriteArrayList<MainThreadCall>()
     private val dispatcher = WorkbenchDispatcher(handler, { reply ->
@@ -140,50 +133,8 @@ class ExtensionHostSession(
         Files.createDirectories(globalStorageHome)
         Files.createDirectories(workspaceStorageHome)
 
-        val spec =
-            installation.launchSpec(pipe.endpoint, ProcessHandle.current().pid()).copy(preloadScript = preloadScript)
-        process = ProcessBuilder(spec.command())
-            .apply {
-                environment().putAll(spec.environment())
-                environment().remove("VSX_LSP_OWNER_PID")
-                environment().remove("VSX_LSP_CONFIG")
-            }
-            .redirectErrorStream(true)
-            .redirectOutput(ProcessBuilder.Redirect.to(storageRoot.resolve("logs/exthost-stdout.log").toFile()))
-            .start()
-
-        // Project disposal can race ProcessBuilder.start(), before finish() sees the child.
-        if (closed.get()) {
-            process!!.destroy()
-            throw IOException("Extension host stopped during process launch")
-        }
-
-        val started = process!!
-        scope.launch {
-            val exited = started.onExit().await()
-            finish(
-                IOException(
-                    "Extension host exited with code ${exited.exitValue()}; see ${
-                        storageRoot.resolve("logs/exthost-stdout.log")
-                    }"
-                )
-            )
-        }
-        scope.launch {
-            delay(CONNECT_SECONDS.seconds)
-            if (channel == null && !closed.get()) finish(IOException("Extension host did not connect within $CONNECT_SECONDS seconds"))
-        }
-        channel = pipe.accept()
-        if (closed.get()) {
-            channel?.close(); throw IOException("Extension host stopped during startup")
-        }
-        // Before the reader: the first thing the host sends is `Ready`, and the reply to it is a
-        // write that must not happen on the reader thread.
-        writer = FrameWriter(channel!!, ::finish, report).also { it.start() }
-        reader = Thread({ readLoop() }, "codebridge-exthost-reader").apply {
-            isDaemon = true
-            start()
-        }
+        connection.open(::handleMessage, ::finish)
+        if (closed.get()) throw IOException("Extension host stopped during startup")
     }
 
     /**
@@ -309,35 +260,9 @@ class ExtensionHostSession(
         }
     }
 
-    private fun readLoop() {
-        val channel = this.channel ?: return
-        val buffer = ByteArray(64 * 1024)
-        var buffered = ByteArray(0)
-
-        try {
-            while (!closed.get()) {
-                val read = channel.read(buffer)
-                if (read <= 0) throw IOException("Extension host connection closed")
-
-                buffered += buffer.copyOfRange(0, read)
-                while (true) {
-                    val size = FrameCodec.frameSize(buffered) ?: break
-                    val frame = FrameCodec.decode(buffered) ?: break
-                    buffered = buffered.copyOfRange(size, buffered.size)
-                    handleFrame(frame)
-                }
-            }
-        } catch (error: Exception) {
-            finish(error)
-        }
-    }
-
-    private fun handleFrame(frame: Frame) {
-        if (frame.type == FrameType.KEEP_ALIVE || frame.type == FrameType.RESUME) return
-        if (frame.payload.isEmpty()) return
-        lastIncomingFrameId = frame.id
-
-        when (HandshakeMessage.of(frame.payload)) {
+    /** One message from the host, on the connection's reader. */
+    private fun handleMessage(payload: ByteArray) {
+        when (HandshakeMessage.of(payload)) {
             HandshakeMessage.READY -> {
                 // The host blocks here until this arrives, and its own marks say how long it felt
                 // it waited. Timing both halves says whether the difference is ours to explain.
@@ -361,7 +286,7 @@ class ExtensionHostSession(
             else -> Unit
         }
 
-        val message = RpcCodec.decode(frame.payload) ?: return
+        val message = RpcCodec.decode(payload) ?: return
 
         when (message) {
             is RpcMessage.Acknowledged -> return
@@ -448,32 +373,15 @@ class ExtensionHostSession(
         installation = installation,
         storageRoot = storageRoot,
         extensions = extensions,
+        myExtensions = myExtensions,
         parentPid = ProcessHandle.current().pid(),
         globalStorageHome = globalStorageHome,
         workspaceStorageHome = workspaceStorageHome,
     ).toString()
 
-    /**
-     * Queues a frame; [FrameWriter] puts it on the wire, and explains why it is not written here.
-     *
-     * The frame id is assigned under the same lock that enqueues, so ids reach the host in the
-     * order they were taken. They must start at 1 and never skip: a gap makes the host wait
-     * silently forever.
-     */
-    @Synchronized
     private fun send(payload: ByteArray) {
-        val writer = this.writer ?: throw IOException("Extension host is not connected")
         if (closed.get()) throw IOException("Extension host is closed")
-        writer.enqueue(
-            FrameCodec.encode(
-                Frame(
-                    FrameType.REGULAR,
-                    outgoingFrameId.incrementAndGet(),
-                    lastIncomingFrameId,
-                    payload
-                )
-            )
-        )
+        connection.send(payload)
     }
 
     private fun finish(error: Throwable) {
@@ -482,11 +390,7 @@ class ExtensionHostSession(
         pending.values.toList().forEach { it.completeExceptionally(error) }
         pending.clear()
         dispatcher.close()
-        runCatching { process?.destroy() }
-        runCatching { channel?.close() }
-        runCatching { pipe.close() }
-        reader?.interrupt()
-        runCatching { writer?.close() }
+        runCatching { connection.close() }
         termination.complete(error)
         scope.cancel()
     }
@@ -494,14 +398,11 @@ class ExtensionHostSession(
     override fun close() = finish(IOException("Extension host session closed"))
 
     /** Native-host fixtures wait after close so Windows releases the host's open log files. */
-    internal fun awaitProcessExit(timeout: Long, unit: TimeUnit): Boolean = process?.waitFor(timeout, unit) ?: true
+    internal fun awaitProcessExit(timeout: Long, unit: TimeUnit): Boolean = (connection as? ProcessHostConnection)?.awaitExit(timeout, unit) ?: true
 
     private companion object {
         /** The host waits on this answer at startup; below this it is not worth a line in the log. */
         const val SLOW_READY_MILLIS = 150L
-
-        /** How long a started host has to connect. */
-        const val CONNECT_SECONDS = 30L
 
         /** How long a call waits for the host's reply; commands, which may wait on the user, wait for as long as they take. */
         const val REPLY_SECONDS = 90L
