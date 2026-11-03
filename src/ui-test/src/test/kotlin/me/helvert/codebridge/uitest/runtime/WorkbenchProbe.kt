@@ -49,6 +49,8 @@ internal fun withWorkbenchProbe(
     files: Map<String, String> = emptyMap(),
     /** The file the client opens first. */
     open: String = "example.codebridgeactions",
+    /** VSIX files installed beside the probe. */
+    extensions: List<Path> = emptyList(),
     test: WorkbenchProbe.() -> Unit,
 ) {
     val project = Files.createTempDirectory("codebridge-$name")
@@ -61,7 +63,8 @@ internal fun withWorkbenchProbe(
 
     context.install(Installed.RUNTIME)
     context.writeUserSettings(settings)
-    ExtensionStore(context.paths.configDir.resolve("codebridge/extensions")).install(requiredPath("codebridge.workbench.vsix"))
+    val store = ExtensionStore(context.paths.configDir.resolve("codebridge/extensions"))
+    (listOf(requiredPath("codebridge.workbench.vsix")) + extensions).forEach { store.install(it) }
     context.disableAutoCompletion()
     context.frontendIDEContext.disableAutoCompletion()
     context.useShortClientSystemDir()

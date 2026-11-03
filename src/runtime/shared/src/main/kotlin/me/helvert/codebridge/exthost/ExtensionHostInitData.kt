@@ -22,6 +22,8 @@ object ExtensionHostInitData {
         storageRoot: Path,
         extensions: List<JsonObject>,
         parentPid: Long,
+        /** Those of [extensions] this host runs. */
+        myExtensions: List<JsonObject> = extensions,
         globalStorageHome: Path = storageRoot.resolve("globalStorage"),
         workspaceStorageHome: Path = storageRoot.resolve("workspaceStorage"),
     ): JsonObject = buildJsonObject {
@@ -51,7 +53,7 @@ object ExtensionHostInitData {
             put("versionId", 1)
             put("allExtensions", JsonArray(extensions))
             putJsonArray("myExtensions") {
-                extensions.forEach { add(it["identifier"] ?: JsonNull) }
+                myExtensions.forEach { add(it["identifier"] ?: JsonNull) }
             }
             putJsonObject("activationEvents") {
                 extensions.forEach { extension ->
@@ -108,10 +110,12 @@ object ExtensionHostInitData {
      *
      * The manifest is spread in wholesale because the host reads `contributes`, `engines`, `main`
      * and other npm fields straight off this object; only the identity and location fields are ours
-     * to add. A [builtin] one is the runtime's own, which may use the proposed API it names.
+     * to add, and `main`, which is a web extension's `browser` entry when it has none (see
+     * [VsixManifest.main]). A [builtin] one is the runtime's own, which may use the proposed API it names.
      */
     fun describeExtension(manifest: VsixManifest, location: Path, builtin: Boolean = false): JsonObject = buildJsonObject {
         manifest.raw.forEach { (key, value) -> put(key, value) }
+        manifest.main?.let { put("main", it) }
         put("identifier", identifier(manifest.id))
         put("extensionLocation", fileUri(location))
         put("isBuiltin", builtin)
