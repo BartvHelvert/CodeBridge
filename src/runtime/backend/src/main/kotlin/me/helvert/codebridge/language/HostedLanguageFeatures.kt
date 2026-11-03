@@ -3527,9 +3527,10 @@ class HostedLanguageFeatures(
     fun documentReleased(file: VirtualFile) {
         val mirror = documents ?: return
         val uri = uris[file] ?: return
+        // Forgotten before the host is told, so whatever hears that it is gone finds it gone here too.
+        if (!mirror.isOpen(OWNER, uri)) forget(file, uri)
         runCatching { mirror.close(HOLDER, uri) }
             .onFailure { LOG.warn("Could not withdraw ${file.name} from the extension host", it) }
-        if (!mirror.isOpen(OWNER, uri)) forget(file, uri)
     }
 
     /**
