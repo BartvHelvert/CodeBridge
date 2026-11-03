@@ -10,7 +10,8 @@ under their own licences.
 
 Each platform's plugin distribution carries VSCodium's remote extension host under `runtime/`: the
 unmodified `vscodium-reh-<platform>-1.143.17183` package from https://github.com/VSCodium/vscodium,
-plus the built-in extension manifests (`package.json` only) of the same build's web package. It is
+plus, from the same build's web package, the built-in extension manifests (`package.json` only)
+and the web worker extension host's script and messages (`runtime/worker-host/`). It is
 downloaded at build time and not part of this repository.
 
 - **VSCodium**, MIT, `Copyright (c) 2018-present The VSCodium contributors`.
