@@ -55,7 +55,7 @@ object VsixManifestParser {
                 description = root.stringOrNull("description"),
                 icon = root.stringOrNull("icon"),
                 engineRange = (root["engines"] as? JsonObject)?.stringOrNull("vscode"),
-                main = root.stringOrNull("main"),
+                main = root.stringOrNull("main") ?: root.stringOrNull("browser"),
                 activationEvents = root.stringList("activationEvents"),
                 extensionDependencies = root.stringList("extensionDependencies"),
                 extensionPack = root.stringList("extensionPack"),

@@ -20,7 +20,14 @@ data class VsixManifest(
     val icon: String? = null,
     /** `engines.vscode`, e.g. `^1.61.0` - the API version the extension expects to be handed. */
     val engineRange: String? = null,
-    /** Entry point relative to the extension root. Absent means the extension is purely declarative. */
+    /**
+     * Entry point relative to the extension root, the code the extension host loads. Absent means the
+     * extension is purely declarative.
+     *
+     * A web extension's `browser` entry when it has no `main`: VS Code runs such an extension in a web
+     * worker extension host, which CodeBridge does not have, so the Node host loads it instead. Most
+     * are bundles that need nothing a worker has and Node lacks.
+     */
     val main: String? = null,
     val activationEvents: List<String> = emptyList(),
     val extensionDependencies: List<String> = emptyList(),
@@ -32,7 +39,7 @@ data class VsixManifest(
     /** The identifier used everywhere in the VS Code ecosystem, e.g. `vadimcn.vscode-lldb`. */
     val id: String get() = "$publisher.$name"
 
-    /** A manifest without `main` contributes only static data and can never need an extension host. */
+    /** A manifest without [main] contributes only static data and can never need an extension host. */
     val isDeclarativeOnly: Boolean get() = main == null
 }
 
