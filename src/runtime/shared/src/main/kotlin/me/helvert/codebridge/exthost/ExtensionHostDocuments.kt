@@ -31,7 +31,7 @@ class ExtensionHostDocuments(
     private val reportTabFailure: (Throwable) -> Unit = {},
     private val callHost: suspend (String, String, String) -> String,
 ) {
-    constructor(session: ExtensionHostSession) : this(callHost = { service, method, args -> session.call(service, method, args) })
+    constructor(session: ExtensionHost) : this(callHost = { service, method, args -> session.call(service, method, args) })
 
     /**
      * Where calls are started, so that each is written as it is made; [sending] waits for every one

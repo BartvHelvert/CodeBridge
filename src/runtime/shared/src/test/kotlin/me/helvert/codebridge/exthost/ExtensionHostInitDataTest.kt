@@ -13,20 +13,9 @@ class ExtensionHostInitDataTest {
     )
 
     @Test
-    fun `a web extension's browser entry is the main the host loads`() {
+    fun `a web extension is described as it declares itself, with no main for the Node host to load`() {
         val described = describe("""{"publisher":"acme","name":"web","version":"1.0.0","browser":"./dist/extension.js"}""")
-        assertEquals(JsonPrimitive("./dist/extension.js"), described["main"])
         assertEquals(JsonPrimitive("./dist/extension.js"), described["browser"])
-    }
-
-    @Test
-    fun `an extension's own main is kept`() {
-        val described = describe("""{"publisher":"acme","name":"both","version":"1.0.0","main":"./out/node.js","browser":"./out/web.js"}""")
-        assertEquals(JsonPrimitive("./out/node.js"), described["main"])
-    }
-
-    @Test
-    fun `a declarative extension gets no main`() {
-        assertEquals(null, describe("""{"publisher":"acme","name":"theme","version":"1.0.0"}""")["main"])
+        assertEquals(null, described["main"])
     }
 }

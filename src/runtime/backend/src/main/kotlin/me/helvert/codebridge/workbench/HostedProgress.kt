@@ -10,7 +10,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import me.helvert.codebridge.exthost.ExtensionHostSession
+import me.helvert.codebridge.exthost.ExtensionHost
 import me.helvert.codebridge.exthost.MainThreadCall
 import me.helvert.codebridge.exthost.protocol.payload.Progress
 import me.helvert.codebridge.progress.withRawProgress
@@ -42,7 +42,7 @@ class HostedProgress(private val project: Project, private val scope: CoroutineS
     private val running = ConcurrentHashMap<Int, Running>()
     /** Progress the plugin shows for itself; no extension handle names these. */
     private val own = ConcurrentHashMap.newKeySet<Running>()
-    @Volatile private var session: ExtensionHostSession? = null
+    @Volatile private var session: ExtensionHost? = null
 
     /**
      * Progress this plugin reports for work of its own, such as starting the host.
@@ -69,7 +69,7 @@ class HostedProgress(private val project: Project, private val scope: CoroutineS
         return Own(task)
     }
 
-    fun hostStarted(session: ExtensionHostSession) {
+    fun hostStarted(session: ExtensionHost) {
         this.session = session
     }
 

@@ -8,7 +8,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.*
-import me.helvert.codebridge.exthost.ExtensionHostSession
+import me.helvert.codebridge.exthost.ExtensionHost
 import me.helvert.codebridge.exthost.MainThreadCall
 import me.helvert.codebridge.exthost.protocol.payload.DebugAdapters
 import me.helvert.codebridge.exthost.protocol.payload.DebugService
@@ -23,7 +23,7 @@ class ExtensionHostDebugAdapters(
     private val breakpoints: DapBreakpoints? = null,
     private val callHost: suspend (String, String) -> String,
 ) {
-    constructor(host: ExtensionHostSession, breakpoints: DapBreakpoints? = null) : this(breakpoints, { method, args ->
+    constructor(host: ExtensionHost, breakpoints: DapBreakpoints? = null) : this(breakpoints, { method, args ->
         host.call(DebugService.EXT_HOST, method, args)
     })
 

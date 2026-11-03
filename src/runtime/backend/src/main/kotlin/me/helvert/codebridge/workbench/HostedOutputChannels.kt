@@ -9,7 +9,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.wm.ToolWindowManager
 import kotlinx.coroutines.*
 import kotlinx.serialization.json.JsonPrimitive
-import me.helvert.codebridge.exthost.ExtensionHostSession
+import me.helvert.codebridge.exthost.ExtensionHost
 import me.helvert.codebridge.exthost.MainThreadCall
 import me.helvert.codebridge.exthost.protocol.payload.OutputChannels
 import java.nio.ByteBuffer
@@ -72,7 +72,7 @@ class HostedOutputChannels(private val project: Project, private val scope: Coro
     @Volatile
     private var visible: String? = null
     @Volatile
-    private var session: ExtensionHostSession? = null
+    private var session: ExtensionHost? = null
     @Volatile
     private var disposed = false
     @Volatile
@@ -96,7 +96,7 @@ class HostedOutputChannels(private val project: Project, private val scope: Coro
         }
     }
 
-    fun hostStarted(session: ExtensionHostSession) {
+    fun hostStarted(session: ExtensionHost) {
         this.session = session
     }
 

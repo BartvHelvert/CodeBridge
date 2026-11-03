@@ -111,19 +111,22 @@ class VsixManifestParserTest {
     }
 
     @Test
-    fun `a web extension's browser entry is its entry point`() {
-        val result = VsixManifestParser.parse(
+    fun `an extension with a browser entry alone runs in a browser`() {
+        val manifest = assertNotNull(VsixManifestParser.parse(
             """{ "publisher": "acme", "name": "web", "version": "1.0.0", "browser": "./dist/extension.js" }"""
-        )
-        assertEquals("./dist/extension.js", assertNotNull(result.manifest).main)
+        ).manifest)
+        assertEquals("./dist/extension.js", manifest.browser)
+        assertTrue(manifest.runsInBrowser)
+        assertTrue(!manifest.isDeclarativeOnly)
     }
 
     @Test
-    fun `main wins over browser`() {
-        val result = VsixManifestParser.parse(
+    fun `an extension with main runs in Node, whatever else it has`() {
+        val manifest = assertNotNull(VsixManifestParser.parse(
             """{ "publisher": "acme", "name": "both", "version": "1.0.0", "main": "./out/node.js", "browser": "./out/web.js" }"""
-        )
-        assertEquals("./out/node.js", assertNotNull(result.manifest).main)
+        ).manifest)
+        assertEquals("./out/node.js", manifest.main)
+        assertTrue(!manifest.runsInBrowser)
     }
 
     @Test

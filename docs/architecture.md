@@ -111,6 +111,15 @@ coverage is described in [Tests and fixtures](../src/test-extensions/README.md#s
   fetched at run time. Substituting another VS Code is not offered: rpcIds drift between builds, and
   a mismatch misroutes calls silently. Current pins and supported platforms are documented in the
   [runtime reference](runtime-and-lsp.md#runtime-selection).
+- **Run web extensions where VS Code does.** An extension with only a `browser` entry, such as
+  Excalidraw's, runs in VS Code's web worker extension host, which VS Code's window runs in a hidden
+  frame. CodeBridge's client runs it in a browser page it never shows, and relays its messages to
+  the backend (`HostedWorkerHosts`, `WorkerHostBrowser`). The backend's services are written for one
+  host; `ExtensionHostRouter` stands between them and both hosts. It moves the handles the worker
+  host gives out above the Node host's, remembers which host registered each command, view or
+  webview, and sends each call to the host it names, to the extension's host for an activation, and
+  to both for what every host keeps, such as documents. Its rules follow VS Code's
+  `extHost.protocol.ts`, per method; a method without one goes to the Node host.
 - **Treat runtime compatibility explicitly.** RPC identifiers depend on the running bundle.
   The build accepts only the pinned runtime archives, by SHA-256, and identifiers are extracted
   from the running bundle.

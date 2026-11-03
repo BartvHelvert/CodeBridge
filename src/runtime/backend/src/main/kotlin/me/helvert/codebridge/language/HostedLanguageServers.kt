@@ -66,7 +66,12 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
      * and in the order they were queued. On the IO pool: starting a host blocks for as long as it takes.
      */
     private val worker = Dispatchers.IO.limitedParallelism(1)
+    /** The Node extension host, which every project with extensions runs. */
     @Volatile private var host: ExtensionHostSession? = null
+    /** VS Code's web worker extension host, for the extensions with code for a browser only; run by the client. */
+    @Volatile private var webHost: ExtensionHostSession? = null
+    /** Both hosts, as the workbench calls into them; see [ExtensionHostRouter]. */
+    @Volatile private var hosts: ExtensionHostRouter? = null
     private var hostInstallation: VsCodeInstallation? = null
     private var extensions = emptyList<InstalledExtension>()
     private var locations = emptyMap<String, Path>()
@@ -511,7 +516,7 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
             if (host == null && runtimeAvailable()) startup = progress.own(startingTitle(waking + containing))
             if (host == null) start(installed) { step -> startup?.text(step) }
             startup?.end()
-            val session = host ?: return@runCatching
+            val session = hosts ?: return@runCatching
             for (extension in extensions) {
                 val event = startupEvent(extension) ?: continue
                 if (extension.id in activated) continue
@@ -534,7 +539,7 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
 
     /** Whether [extension] has code and a `workspaceContains:` event the workspace satisfies. */
     private fun containsWorkspace(extension: InstalledExtension): Boolean {
-        if (extension.manifest.main == null) return false
+        if (extension.manifest.isDeclarativeOnly) return false
         val base = project.basePath ?: return false
         return HostedWorkspace.containsAny(
             CodeBridgeWorkspace.of(Path.of(base)),
@@ -546,7 +551,7 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
     /** The startup event [extension] activates on, `*` before `onStartupFinished`, or null for neither. */
     private fun startupEvent(extension: InstalledExtension): String? {
         val manifest = extension.manifest
-        if (manifest.main == null) return null
+        if (manifest.isDeclarativeOnly) return null
         return STARTUP_EVENTS.firstOrNull { it in manifest.activationEvents }
     }
 
@@ -579,7 +584,7 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
      * while [worker] is blocked here.
      */
     private fun activate(languages: Set<String>) {
-        val session = host ?: return
+        val session = hosts ?: return
         for (extension in extensions) {
             if (!wakes(extension, languages) || extension.id in activated) continue
             val identifier = ExtensionHostInitData.identifier(extension.id)
@@ -592,7 +597,7 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
     }
 
     /** The host's answer to activating [extension] with [args], asked for now; a failure is logged as well. */
-    private fun activation(session: ExtensionHostSession, extension: InstalledExtension, args: String): Deferred<String> =
+    private fun activation(session: ExtensionHost, extension: InstalledExtension, args: String): Deferred<String> =
         scope.async(start = CoroutineStart.UNDISPATCHED) {
             try {
                 session.call("ExtHostExtensionService", $$"$activate", args)
@@ -624,7 +629,7 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
             val extension = installed.firstOrNull { it.id == extensionId }
                 ?: throw IllegalStateException("$extensionId is not enabled")
             val session = startedHost(installed, listOf(extension))
-            if (extension.manifest.main == null) return@withContext null
+            if (extension.manifest.isDeclarativeOnly) return@withContext null
             val identifier = ExtensionHostInitData.identifier(extension.id)
             val reason = buildJsonObject {
                 put("startup", false); put("activationEvent", event); put("extensionId", identifier)
@@ -657,7 +662,7 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
      * The running host, started first for [installed] if none runs, its start shown as that of
      * [waking]; the activation that follows is not shown, as for a file. On [worker].
      */
-    private fun startedHost(installed: List<InstalledExtension>, waking: List<InstalledExtension>): ExtensionHostSession {
+    private fun startedHost(installed: List<InstalledExtension>, waking: List<InstalledExtension>): ExtensionHost {
         if (host == null) {
             val startup = if (runtimeAvailable()) progress.own(startingTitle(waking)) else null
             try {
@@ -668,7 +673,7 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
                 startup?.end()
             }
         }
-        return checkNotNull(host) { "The extension host is not running" }
+        return checkNotNull(hosts) { "The extension host is not running" }
     }
 
     /** Runs [command] as an extension's `executeCommand` would; fails when no host is running. */
@@ -689,7 +694,7 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
 
     private fun wakes(extension: InstalledExtension, languages: Set<String>): Boolean {
         val manifest = extension.manifest
-        return manifest.main != null && (
+        return !manifest.isDeclarativeOnly && (
             manifest.contributes.languages.any { it.id in languages } ||
                 manifest.activationEvents.any { it == "*" || it == "onStartupFinished" || it == "onLanguage" || it.removePrefix("onLanguage:") in languages }
             )
@@ -712,7 +717,7 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
             try {
                 check(!disposed && !project.isDisposed) { "Project is closed" }
                 if (host == null) start(ProjectExtensions.getInstance(project).enabled())
-                val sessionHost = checkNotNull(host)
+                val sessionHost = checkNotNull(hosts)
                 check(selected.all { selection -> extensions.any { it.id == selection.id && it.enabled } }) { "A debugger extension is disabled or missing" }
                 lateinit var session: HostedDebugSession
                 session = HostedDebugSession(checkNotNull(hostInstallation), selected, workspace,
@@ -773,7 +778,7 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
         phases.mark("copying ${installed.size} extension(s)")
         status("Reading extension settings")
         val userSettings = prepareUserSettings()
-        lateinit var session: ExtensionHostSession
+        lateinit var hosts: ExtensionHostRouter
         // Why a `.code-workspace` file is not used, now or when it changes: worth a word, since the
         // folders the extensions see would otherwise differ from VS Code's without saying so.
         val workspaceProblem: (String) -> Unit = { problem ->
@@ -783,7 +788,7 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
         val workbench = HostedWorkbench(
             workspace, PathManager.getSystemDir().resolve("codebridge/state"),
             installed.map { it.manifest.raw },
-            { service, method, args -> session.call(service, method, args) },
+            { service, method, args -> hosts.call(service, method, args) },
             { message, error -> if (error == null) LOG.warn(message) else LOG.warn(message, error) },
             // Extensions' own logs, shown in the output panel beside their channels.
             object : HostedLogging.Files {
@@ -808,102 +813,66 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
         // handed; a large extension contributes hundreds of settings.
         phases.mark("workbench defaults")
         val workspaceData = ExtensionHostInitData.workspaceData(workbench.storage.workspaceId, workbench.layout)
-        session = ExtensionHostSession(
-            installation,
-            installed.map { ExtensionHostInitData.describeExtension(it.manifest, locations.getValue(it.id)) } +
-                builtinExtensions(installation), storage,
-            object : MainThreadHandler {
-                override fun handle(call: MainThreadCall): String? = this@HostedLanguageServers.handle(call)
-                override suspend fun answer(call: MainThreadCall): MainThreadResult =
-                    // Only a module's own services read a `SerializableObjectWithBuffers` argument's
-                    // bytes; any other would take its JSON alone, and act on it with the bytes missing.
-                    if (call.objectBuffers.values.any { it.isNotEmpty() } && CodeBridgeHostService.forService(call.service) == null)
-                        throw MainThreadException("Unavailable", "Nested binary arguments are not supported by ${call.service}.${call.method}")
-                    // Asynchronous because the reply is the user's answer, which may take minutes.
-                    else if (call.service == Messages.SERVICE) messages.handle(call)
-                    // Asynchronous because it is applied on the editor thread, which may itself be
-                    // waiting on the host -- a code action running the command that sent this.
-                    else if (call.service == WorkspaceEdit.SERVICE && call.method == WorkspaceEdit.TRY_APPLY)
-                        features.applyWorkspaceEdit(call.argsJson)
-                    // The same, and `showTextDocument` also waits for the file to be mirrored.
-                    else if (call.service == TextEditors.SERVICE)
-                        CodeBridgeTextEditors.getInstance(project).handle(call.method, call.argsJson)
-                    // Asynchronous because a document is opened on [worker], behind the edits before it.
-                    else if (call.service == Documents.MAIN_THREAD) documents.handle(call)
-                    // Asynchronous because the answer is whether the run started, which takes the EDT.
-                    else if (call.service == DebugService.SERVICE && call.method == DebugService.START_DEBUGGING)
-                        CodeBridgeStartDebugging.start(project, call.argsJson)
-                    else if (call.service == DebugService.SERVICE && call.method == DebugService.STOP_DEBUGGING)
-                        CodeBridgeDebugSessions.stop(project, call.argsJson)
-                    // Asynchronous because the reply is the adapter's, which answers when it will.
-                    else if (call.service == DebugService.SERVICE && call.method == DebugService.CUSTOM_REQUEST)
-                        customDebugRequest(call.argsJson)
-                    // Asynchronous because the reply is the user's choice.
-                    else if (call.service == QuickOpen.SERVICE) (quickOpen ?: throw stopping()).handle(call)
-                    // Asynchronous because the reply is the file the user picks.
-                    else if (call.service == Dialogs.SERVICE) dialogs.handle(call)
-                    // Asynchronous because `vscode.tests.runTests` is answered once the run is over.
-                    else if (call.service == Testing.SERVICE) testing.handle(call)
-                    else if (call.service == Tasks.SERVICE) (tasks ?: throw stopping()).handle(call)
-                    // Asynchronous because a terminal is made on the editor thread, and `createTerminal`
-                    // is answered only once the host has taken the terminal's id.
-                    else if (call.service == Terminals.SERVICE) (terminals ?: throw stopping()).handle(call)
-                    // Asynchronous because signing in waits on the user, and on the provider's host calls.
-                    else if (call.service == Authentication.SERVICE) (authentication ?: throw stopping()).handle(call)
-                    // Asynchronous because a link is answered once the client has opened it, which may ask the user.
-                    else if (HostedWindow.handles(call)) HostedWindow.handle(
-                        call,
-                        HostedClient.getInstance(project)::browse
-                    )
-                    // Asynchronous because the clipboard is the client's, which answers when it has.
-                    else if (call.service == Clipboard.SERVICE) HostedClient.getInstance(project).clipboard(call)
-                    else if (call.service == Urls.SERVICE) (urls ?: throw stopping()).handle(call)
-                    // Asynchronous because unpacking a debugger's platform package takes seconds, and
-                    // every call the host makes meanwhile would queue behind it.
-                    else if (isInstallFromVsix(call)) installPayload(call)
-                    // Before the workbench, whose file system is the files on disk alone.
-                    else if (extensionFileSystem(call)) MainThreadResult()
-                    // A module's own, such as notebooks'; see [CodeBridgeHostService].
-                    else CodeBridgeHostService.forService(call.service)?.answer(project, call)
-                        ?: workbench.handle(call) ?: MainThreadResult(handle(call))
-            },
+        val descriptions = installed.associate { it.id to ExtensionHostInitData.describeExtension(it.manifest, locations.getValue(it.id)) }
+        // Every host knows of every extension, and runs its own: VS Code's web worker host those with
+        // code for a browser only, the Node host the rest.
+        val known = descriptions.values.toList() + builtinExtensions(installation)
+        val inBrowser = installed.filter { it.manifest.runsInBrowser }
+        val browserOwn = inBrowser.map { descriptions.getValue(it.id) }.toSet()
+        val session = ExtensionHostSession(
+            installation, known, storage, mainThread(workbench, { hosts }, { checkNotNull(host) }),
             workspace = workspaceData, configuration = workbench.configuration.snapshot(),
             globalStorageHome = workbench.storage.globalHome, workspaceStorageHome = workbench.storage.workspaceHome,
-            report = { LOG.warn(it) },
+            report = { LOG.warn(it) }, myExtensions = known - browserOwn,
         )
+        val web = if (inBrowser.isEmpty()) null else {
+            val connection = HostedWorkerHosts.getInstance(project).connection(installation, inBrowser.associate { it.id to locations.getValue(it.id) })
+            lateinit var front: StartingHost
+            val webSession = ExtensionHostSession(
+                installation, known, storage, mainThread(workbench, { hosts }, { front }, connection::browserUri),
+                workspace = workspaceData, configuration = workbench.configuration.snapshot(),
+                globalStorageHome = workbench.storage.globalHome, workspaceStorageHome = workbench.storage.workspaceHome,
+                report = { LOG.warn(it) }, myExtensions = browserOwn.toList(), connection = connection,
+            )
+            front = StartingHost(webSession, webSession.ready)
+            webSession to front
+        }
+        hosts = ExtensionHostRouter(session, web?.second, inBrowser.map { it.id.lowercase() }.toSet(), scope)
+        this.hosts = hosts
+        webHost = web?.first
         host = session
-        val adapters = ExtensionHostDebugAdapters(session, HostedBreakpoints.getInstance(project).adapters)
+        val adapters = ExtensionHostDebugAdapters(hosts, HostedBreakpoints.getInstance(project).adapters)
         debugAdapters = adapters
         session.termination.invokeOnCompletion { adapters.hostClosed() }
-        val terminals = HostedTerminals(project, workspace) { service, method, args -> session.call(service, method, args) }
+        val terminals = HostedTerminals(project, workspace) { service, method, args -> hosts.call(service, method, args) }
         this.terminals = terminals
-        quickOpen = HostedQuickOpen(project) { service, method, args -> session.call(service, method, args) }
-        authentication = HostedAuthentication({ service, method, args -> session.call(service, method, args) },
+        quickOpen = HostedQuickOpen(project) { service, method, args -> hosts.call(service, method, args) }
+        authentication = HostedAuthentication({ service, method, args -> hosts.call(service, method, args) },
             installed.map { it.manifest.raw }, { extensionId, event -> activate(extensionId, event) }, messages::show,
             AuthenticationAccess(PathManager.getSystemDir().resolve("codebridge/state/authentication.json"))
         )
         urls = HostedUrls(
             installation.uriScheme,
-            { service, method, args -> session.call(service, method, args) },
+            { service, method, args -> hosts.call(service, method, args) },
             { extensionId, event -> activate(extensionId, event) },
             messages::show,
             owner = project
         )
-        tasks = HostedTasks(project, terminals) { service, method, args -> session.call(service, method, args) }
-        features.hostStarted(session)
-        output.hostStarted(session)
-        progress.hostStarted(session)
-        statusBar.hostStarted(session)
-        treeViews.hostStarted(session, workbench::executeCommand)
-        webviews.hostStarted(session)
-        HostedContentProviders.getInstance(project).hostStarted(session)
-        decorations.hostStarted { service, method, args -> session.call(service, method, args, true) }
-        testing.hostStarted { service, method, args, cancellable -> session.call(service, method, args, cancellable) }
+        tasks = HostedTasks(project, terminals) { service, method, args -> hosts.call(service, method, args) }
+        features.hostStarted(hosts)
+        output.hostStarted(hosts)
+        progress.hostStarted(hosts)
+        statusBar.hostStarted(hosts)
+        treeViews.hostStarted(hosts, workbench::executeCommand)
+        webviews.hostStarted(hosts)
+        HostedContentProviders.getInstance(project).hostStarted(hosts)
+        decorations.hostStarted { service, method, args -> hosts.call(service, method, args, true) }
+        testing.hostStarted { service, method, args, cancellable -> hosts.call(service, method, args, cancellable) }
         val services = object : CodeBridgeHostService.Host {
             override suspend fun call(
                 service: String, method: String, argsJson: String, cancellable: Boolean,
                 buffers: Map<Int, ByteArray>, objectBuffers: Map<Int, List<ByteArray>>, timesOut: Boolean,
-            ): HostReply = session.callWithBuffers(service, method, argsJson, cancellable, buffers, objectBuffers, timesOut)
+            ): HostReply = hosts.callWithBuffers(service, method, argsJson, cancellable, buffers, objectBuffers, timesOut)
         }
         CodeBridgeHostService.all.forEach { it.hostStarted(project, services) }
         status("Watching the workspace")
@@ -913,19 +882,34 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
         check(!disposed && !project.isDisposed) { "Project is closed" }
         status("Launching the extension host")
         session.start()
+        // Returns at once: the client runs it, and calls for it wait until it has.
+        web?.first?.start()
         phases.mark("launching the host process")
         status("Waiting for the extension host")
         check(session.awaitInitialized(30, TimeUnit.SECONDS)) { "Extension host initialization timed out" }
         phases.mark("host handshake")
         workbench.initialized()
         features.hostInitialized()
-        HostedBreakpoints.getInstance(project).hostStarted { method, args -> session.call(DebugService.EXT_HOST, method, args) }
+        HostedBreakpoints.getInstance(project).hostStarted { method, args -> hosts.call(DebugService.EXT_HOST, method, args) }
         HostedContextKeys.getInstance(project).configuration = { workbench.configuration.effectiveFor(null) }
         LOG.info("Extension host ready in $phases")
         scope.launch {
             val error = session.termination.await()
             withContext(worker) {
                 if (!disposed && host === session) { LOG.warn("Language extension host stopped", error); stop() }
+            }
+        }
+        web?.first?.let { webSession ->
+            scope.launch {
+                val error = webSession.termination.await()
+                withContext(worker) {
+                    if (disposed || webHost !== webSession) return@withContext
+                    // Not a failure to tell anyone about: the client left, and the IDE closing is one.
+                    if (error is HostedWorkerHosts.ClientGoneException) return@withContext LOG.info("Web worker extension host stopped: ${error.message}")
+                    LOG.warn("Web worker extension host stopped", error)
+                    messages.notify(Messages.Severity.WARNING,
+                        "${inBrowser.joinToString(", ", transform = ::label)} stopped: ${error.message}", source = "Web extensions")
+                }
             }
         }
     }
@@ -1053,6 +1037,79 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
     /** Why a call for a service that only lives while a host runs finds none. */
     private fun stopping() = IllegalStateException("The extension host is stopping")
 
+    /**
+     * What answers host [from]'s calls into the workbench: each first made one the shared services
+     * can read, by [hosts] -- see [ExtensionHostRouter.incoming] -- then answered as from a single host.
+     * The web worker host's own question, where to fetch a file of one of its extensions from, is
+     * answered by [browserUri].
+     */
+    private fun mainThread(
+        workbench: HostedWorkbench,
+        hosts: () -> ExtensionHostRouter,
+        from: () -> ExtensionHost,
+        browserUri: ((JsonElement?) -> JsonElement?)? = null,
+    ): MainThreadHandler = object : MainThreadHandler {
+        override fun handle(call: MainThreadCall): String? = this@HostedLanguageServers.handle(hosts().incoming(call, from()))
+        override suspend fun answer(call: MainThreadCall): MainThreadResult = answer(workbench, hosts().incoming(call, from()), browserUri)
+    }
+
+    private suspend fun answer(workbench: HostedWorkbench, call: MainThreadCall, browserUri: ((JsonElement?) -> JsonElement?)?): MainThreadResult =
+        // Only a module's own services read a `SerializableObjectWithBuffers` argument's
+        // bytes; any other would take its JSON alone, and act on it with the bytes missing.
+        if (call.objectBuffers.values.any { it.isNotEmpty() } && CodeBridgeHostService.forService(call.service) == null)
+            throw MainThreadException("Unavailable", "Nested binary arguments are not supported by ${call.service}.${call.method}")
+        // Where the web worker host fetches an extension's code and files from: the client's browser,
+        // which asks the backend for them.
+        else if (browserUri != null && call.service == "MainThreadExtensionService" && call.method == $$"$asBrowserUri")
+            MainThreadResult(browserUri(Args.of(call.method, call.argsJson).element(0)).toString())
+        // Asynchronous because the reply is the user's answer, which may take minutes.
+        else if (call.service == Messages.SERVICE) messages.handle(call)
+        // Asynchronous because it is applied on the editor thread, which may itself be
+        // waiting on the host -- a code action running the command that sent this.
+        else if (call.service == WorkspaceEdit.SERVICE && call.method == WorkspaceEdit.TRY_APPLY)
+            features.applyWorkspaceEdit(call.argsJson)
+        // The same, and `showTextDocument` also waits for the file to be mirrored.
+        else if (call.service == TextEditors.SERVICE)
+            CodeBridgeTextEditors.getInstance(project).handle(call.method, call.argsJson)
+        // Asynchronous because a document is opened on [worker], behind the edits before it.
+        else if (call.service == Documents.MAIN_THREAD) documents.handle(call)
+        // Asynchronous because the answer is whether the run started, which takes the EDT.
+        else if (call.service == DebugService.SERVICE && call.method == DebugService.START_DEBUGGING)
+            CodeBridgeStartDebugging.start(project, call.argsJson)
+        else if (call.service == DebugService.SERVICE && call.method == DebugService.STOP_DEBUGGING)
+            CodeBridgeDebugSessions.stop(project, call.argsJson)
+        // Asynchronous because the reply is the adapter's, which answers when it will.
+        else if (call.service == DebugService.SERVICE && call.method == DebugService.CUSTOM_REQUEST)
+            customDebugRequest(call.argsJson)
+        // Asynchronous because the reply is the user's choice.
+        else if (call.service == QuickOpen.SERVICE) (quickOpen ?: throw stopping()).handle(call)
+        // Asynchronous because the reply is the file the user picks.
+        else if (call.service == Dialogs.SERVICE) dialogs.handle(call)
+        // Asynchronous because `vscode.tests.runTests` is answered once the run is over.
+        else if (call.service == Testing.SERVICE) testing.handle(call)
+        else if (call.service == Tasks.SERVICE) (tasks ?: throw stopping()).handle(call)
+        // Asynchronous because a terminal is made on the editor thread, and `createTerminal`
+        // is answered only once the host has taken the terminal's id.
+        else if (call.service == Terminals.SERVICE) (terminals ?: throw stopping()).handle(call)
+        // Asynchronous because signing in waits on the user, and on the provider's host calls.
+        else if (call.service == Authentication.SERVICE) (authentication ?: throw stopping()).handle(call)
+        // Asynchronous because a link is answered once the client has opened it, which may ask the user.
+        else if (HostedWindow.handles(call)) HostedWindow.handle(
+            call,
+            HostedClient.getInstance(project)::browse
+        )
+        // Asynchronous because the clipboard is the client's, which answers when it has.
+        else if (call.service == Clipboard.SERVICE) HostedClient.getInstance(project).clipboard(call)
+        else if (call.service == Urls.SERVICE) (urls ?: throw stopping()).handle(call)
+        // Asynchronous because unpacking a debugger's platform package takes seconds, and
+        // every call the host makes meanwhile would queue behind it.
+        else if (isInstallFromVsix(call)) installPayload(call)
+        // Before the workbench, whose file system is the files on disk alone.
+        else if (extensionFileSystem(call)) MainThreadResult()
+        // A module's own, such as notebooks'; see [CodeBridgeHostService].
+        else CodeBridgeHostService.forService(call.service)?.answer(project, call)
+            ?: workbench.handle(call) ?: MainThreadResult(handle(call))
+
     private fun handle(call: MainThreadCall): String? = synchronized(debugLock) {
         if (features.handle(call.service, call.method, call.argsJson)) return@synchronized null
         // Routed by service name rather than by the "was it consumed" flag the rest uses, because
@@ -1138,6 +1195,7 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
     private fun stop() {
         workbench?.close(); workbench = null
         val old = host; host = null; hostInstallation = null
+        val oldWeb = webHost; webHost = null; hosts = null
         debugSessions.toList().forEach { it.close() }; debugSessions.clear()
         debugAdapters = null
         tasks?.close(); tasks = null
@@ -1146,7 +1204,7 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
         authentication?.close(); authentication = null
         urls?.close(); urls = null
         synchronized(debugLock) { debugRegistrations.clear() }
-        old?.close(); activated.clear(); extensions = emptyList()
+        oldWeb?.close(); old?.close(); activated.clear(); extensions = emptyList()
         releaseStorage()
         documents.hostStopped()
         if (!project.isDisposed) {
@@ -1192,6 +1250,7 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
         userSettingsWatch.getAndSet(null)?.let { LocalFileSystem.getInstance().removeWatchedRoot(it) }
         disposed = true
         workbench?.close()
+        webHost?.close()
         host?.close() // Unblocks initialization on the worker.
         releaseStorage()
     }

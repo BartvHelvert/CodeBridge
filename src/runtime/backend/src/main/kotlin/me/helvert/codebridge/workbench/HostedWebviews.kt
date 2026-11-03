@@ -14,7 +14,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import me.helvert.codebridge.exthost.ExtensionHostSession
+import me.helvert.codebridge.exthost.ExtensionHost
 import me.helvert.codebridge.exthost.MainThreadCall
 import me.helvert.codebridge.exthost.protocol.payload.Messages
 import me.helvert.codebridge.exthost.protocol.payload.UriComponents
@@ -96,10 +96,10 @@ class HostedWebviews(private val project: Project, private val scope: CoroutineS
     private val restoring = ConcurrentHashMap.newKeySet<String>()
     /** One view resolved at a time, so showing a view twice quickly does not fill it twice. */
     private val resolving = Mutex()
-    @Volatile private var session: ExtensionHostSession? = null
+    @Volatile private var session: ExtensionHost? = null
     private val treeViews get() = HostedTreeViews.getInstance(project)
 
-    fun hostStarted(session: ExtensionHostSession) {
+    fun hostStarted(session: ExtensionHost) {
         this.session = session
     }
 

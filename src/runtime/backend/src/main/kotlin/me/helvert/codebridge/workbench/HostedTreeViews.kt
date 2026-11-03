@@ -20,7 +20,7 @@ import kotlinx.serialization.json.*
 import me.helvert.codebridge.extensions.ExtensionInstallationService
 import me.helvert.codebridge.extensions.InstalledExtension
 import me.helvert.codebridge.extensions.ProjectExtensions
-import me.helvert.codebridge.exthost.ExtensionHostSession
+import me.helvert.codebridge.exthost.ExtensionHost
 import me.helvert.codebridge.exthost.MainThreadCall
 import me.helvert.codebridge.exthost.protocol.payload.*
 import me.helvert.codebridge.language.HostedLanguageServers
@@ -247,7 +247,7 @@ class HostedTreeViews(private val project: Project, val scope: CoroutineScope) {
     private val runtime = MutableStateFlow<Map<String, Runtime>>(emptyMap())
     private val events = MutableSharedFlow<TreeEventDto>(extraBufferCapacity = 64)
     @Volatile
-    private var session: ExtensionHostSession? = null
+    private var session: ExtensionHost? = null
 
     /** Runs a command as `commands.executeCommand` would, the workbench's own included. */
     @Volatile
@@ -270,7 +270,7 @@ class HostedTreeViews(private val project: Project, val scope: CoroutineScope) {
      * item's command may be the workbench's own -- `vscode.open` reaches here as `_workbench.open`
      * -- which no extension registers, so the host answers that it does not exist.
      */
-    fun hostStarted(session: ExtensionHostSession, executeCommand: suspend (String, JsonArray) -> Any?) {
+    fun hostStarted(session: ExtensionHost, executeCommand: suspend (String, JsonArray) -> Any?) {
         this.session = session
         this.executeCommand = executeCommand
     }
