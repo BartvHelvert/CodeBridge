@@ -10,7 +10,15 @@ import java.util.concurrent.ConcurrentHashMap
 class ExtensionActivations {
     private val failures = ConcurrentHashMap<String, Failure>()
 
-    data class Failure(val extensionId: String, val message: String, val missingDependency: String?)
+    data class Failure(val extensionId: String, val message: String, val missingDependency: String?) {
+        /**
+         * Whether the user is told, as VS Code's release build decides: only a missing dependency is
+         * something they can act on. Any other failure is the extension's to explain -- golang.go
+         * without Go installed shows its own "Failed to find the go binary" message and then rejects
+         * `activate` with no reason, which would otherwise read "failed: undefined."
+         */
+        val notifiesUser: Boolean get() = missingDependency != null
+    }
 
     fun observe(call: MainThreadCall) {
         failure(call)?.let { failures[it.extensionId.lowercase(Locale.ROOT)] = it }
