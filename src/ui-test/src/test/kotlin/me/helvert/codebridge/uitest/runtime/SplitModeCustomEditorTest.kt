@@ -1,6 +1,9 @@
 package me.helvert.codebridge.uitest.runtime
 
+import com.intellij.driver.client.Remote
+import com.intellij.driver.client.service
 import com.intellij.driver.sdk.invokeAction
+import com.intellij.driver.sdk.singleProject
 import com.intellij.driver.sdk.ui.components.common.EditorTabsRef
 import com.intellij.driver.sdk.ui.components.common.IdeaFrameUI
 import com.intellij.driver.sdk.ui.components.common.JCefUI
@@ -247,8 +250,12 @@ class SplitModeCustomEditorTest {
         count(1)
         browser.findElement("//button[@id='act']").click()
         count(2)
+        // The page shows a count before the workbench hears of its edit, which has to be there to be
+        // undone: the editor is modified once the backend has it.
+        awaitProbeValue("the workbench holding the extension's edits", { selectedEditorModified() }) { it == true }
         browser.findElement("//p[@id='value']").click()
         frame.keyboard { hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_Z) }
+        awaitProbeValue("the extension asked to undo", ::state) { it?.contains(""""undone":1""") == true }
         count(1)
         frame.keyboard { hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_SHIFT, KeyEvent.VK_Z) }
         count(2)
@@ -269,6 +276,21 @@ class SplitModeCustomEditorTest {
         awaitProbeValue("the document let go of", ::state) {
             it?.contains(""""saved":[1,2]""") == true && it.contains(""""disposed":1""")
         }
+    }
+
+    /** Whether the client's selected editor has changes, which a custom editor's are the backend's; null while it cannot say. */
+    private fun WorkbenchProbe.selectedEditorModified(): Boolean? = runCatching {
+        driver.service(FileEditorManagerRef::class, driver.singleProject()).getSelectedEditor()?.isModified()
+    }.getOrNull()
+
+    @Remote("com.intellij.openapi.fileEditor.FileEditorManager")
+    interface FileEditorManagerRef {
+        fun getSelectedEditor(): FileEditorRef?
+    }
+
+    @Remote("com.intellij.openapi.fileEditor.FileEditor")
+    interface FileEditorRef {
+        fun isModified(): Boolean
     }
 
     /** Opens the project's custom editor file as an extension does, waiting until [name] was. */
