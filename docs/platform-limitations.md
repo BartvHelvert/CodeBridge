@@ -44,6 +44,7 @@ entries say so, and say what such a build loses.
     - [The Structure view cannot outline a client-only editor](#the-structure-view-cannot-outline-a-client-only-editor)
 - [Editing](#editing)
     - [TextMate files never split brackets on Enter](#textmate-files-never-split-brackets-on-enter)
+    - [TextMate reads indentation patterns as Java regexes (worked around)](#textmate-reads-indentation-patterns-as-java-regexes-worked-around)
 - [Settings and UI](#settings-and-ui)
     - [The Plugins page cannot be extended](#the-plugins-page-cannot-be-extended)
     - [A stripe button keeps the title its tool window was registered with](#a-stripe-button-keeps-the-title-its-tool-window-was-registered-with)
@@ -544,6 +545,30 @@ the frontend still guesses without it (see [above](#the-frontend-guesses-enter-w
 `textmate` that checks pairs against the scope's highlighting pairs instead of PSI elements. It
 loads on the frontend too, so that would also cover a split frontend that reads the file as
 `textmate`.
+
+### TextMate reads indentation patterns as Java regexes (worked around)
+
+Another gap in the bundled TextMate plugin rather than a missing API.
+
+**What VS Code offers.** A language configuration's `indentationRules` and `onEnterRules` are
+JavaScript regular expressions, compiled with `new RegExp(pattern)` and tested with `RegExp.test`,
+which searches the line.
+
+**What the platform offers.** `TextMateLineIndentProvider` compiles them with `java.util.regex`,
+which is stricter: a `{` that starts no quantifier, a `[` or `&&` inside a class, `[^]`, `\v` and an
+escaped letter like `\y` all mean something else or do not compile. Go's `increaseIndentPattern`,
+``...(\b(func|if|...)\b.*)?{[^}"'`]*...``, fails with "Illegal repetition", logged as a SEVERE on every
+Enter in a `.go` file, and the new line is not indented. It also matches `increaseIndentPattern` and
+`decreaseIndentPattern` against the whole line, where VS Code searches it.
+
+**What CodeBridge does.** It registers `CodeBridgeTextMateLineIndent` as the first
+`lineIndentProvider`, which takes over for every TextMate file. It applies the same rules as the
+platform's, but rewrites each pattern into the Java one that reads the same (`JavaScriptRegex`) and
+searches the line for it. A pattern that still does not compile is logged once as a warning and
+ignored.
+
+**What would fix it.** The TextMate plugin translating language-configuration patterns from
+JavaScript syntax before compiling them, and testing them with `find` rather than `matches`.
 
 ## Settings and UI
 

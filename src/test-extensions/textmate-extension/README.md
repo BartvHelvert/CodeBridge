@@ -3,7 +3,8 @@
 A declarative extension with no JavaScript entry point or server. It claims `.codebridgegrammar` and
 colours `PROBE` as a keyword and double-quoted text as a string. Its language configuration
 declares brackets and indentation rules, for the editing tests, and it contributes one snippet,
-`probeblock`, for the snippet tests. Example:
+`probeblock`, for the snippet tests. Its `increaseIndentPattern` has a bare `{`, as Go's does,
+which JavaScript reads as a literal and `java.util.regex` rejects. Example:
 
 ```text
 PROBE ordinary "string"
