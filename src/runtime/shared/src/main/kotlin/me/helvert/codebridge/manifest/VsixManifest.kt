@@ -49,6 +49,7 @@ data class Contributes(
     /** Language ids for which the extension allows breakpoints to be set. */
     val breakpointLanguages: List<String> = emptyList(),
     val languageServers: List<LanguageServerContribution> = emptyList(),
+    val snippets: List<SnippetContribution> = emptyList(),
     val declaredKeys: Set<String> = emptySet(),
 ) {
     /** Contribution points present in the manifest that we do not yet understand. */
@@ -57,7 +58,7 @@ data class Contributes(
     fun debugger(type: String): DebuggerContribution? = debuggers.firstOrNull { it.type == type }
 
     private companion object {
-        val HANDLED_KEYS = setOf("debuggers", "languages", "breakpoints")
+        val HANDLED_KEYS = setOf("debuggers", "languages", "breakpoints", "snippets")
     }
 }
 
@@ -146,6 +147,15 @@ data class LanguageContribution(
  * the package's own manifest and must be resolved against the extension directory before use.
  */
 data class LanguageIcon(val light: String, val dark: String)
+
+/**
+ * One entry of `contributes.snippets`: a file of snippets, offered in completion for files in
+ * [language]. Without one, the file is global, and each snippet's own `scope` says where it applies.
+ *
+ * [path] is untrusted, out of the package's own manifest, and must be resolved against the extension
+ * directory before use.
+ */
+data class SnippetContribution(val language: String?, val path: String)
 
 /** Direct language-server declarations used by extensions that expose an executable server. */
 data class LanguageServerContribution(

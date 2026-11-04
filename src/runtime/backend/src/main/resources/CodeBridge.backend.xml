@@ -243,6 +243,8 @@
         <notificationGroup id="CodeBridge launch.json" displayType="BALLOON"/>
         <!-- Also ordinary backend-computed completion, for the same split-mode reason. -->
         <completion.contributor language="TEXT" implementationClass="me.helvert.codebridge.language.CodeBridgeCompletionContributor"/>
+        <!-- Extensions' snippets, for whatever language a file is in; see CodeBridgeSnippetCompletion. -->
+        <completion.contributor language="any" implementationClass="me.helvert.codebridge.language.CodeBridgeSnippetCompletion"/>
         <!-- Where a language server's own log lands; the id must match HostedOutputChannels.TOOL_WINDOW_ID. -->
         <toolWindow id="CodeBridge Output" anchor="bottom" canCloseContents="false"
                     icon="AllIcons.Toolwindows.ToolWindowMessages"

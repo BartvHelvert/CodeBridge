@@ -75,6 +75,7 @@ object VsixManifestParser {
             languageServers = parseLanguageServers(node["languageServers"] ?: node["languageServer"], problems),
             breakpointLanguages = (node["breakpoints"] as? JsonArray).orEmpty()
                 .mapNotNull { (it as? JsonObject)?.stringOrNull("language") },
+            snippets = parseSnippets(node["snippets"] as? JsonArray, problems),
             declaredKeys = node.keys.toSet(),
         )
     }
@@ -144,6 +145,19 @@ object VsixManifestParser {
                 configuration = obj.stringOrNull("configuration"),
                 icon = parseLanguageIcon(obj["icon"]),
             )
+        }
+
+    private fun parseSnippets(array: JsonArray?, problems: MutableList<String>): List<SnippetContribution> =
+        array.orEmpty().mapIndexedNotNull { index, element ->
+            val obj = element as? JsonObject ?: run {
+                problems += "contributes.snippets[$index] is not an object"
+                return@mapIndexedNotNull null
+            }
+            val path = obj.stringOrNull("path")?.takeIf { it.isNotBlank() } ?: run {
+                problems += "contributes.snippets[$index] has no \"path\""
+                return@mapIndexedNotNull null
+            }
+            SnippetContribution(obj.stringOrNull("language")?.takeIf { it.isNotBlank() }, path)
         }
 
     /** `{ "light": "...", "dark": "..." }`, and nothing else; a half-declared pair is not one. */

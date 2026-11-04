@@ -178,6 +178,81 @@ class SnippetsTest {
         assertEquals("    a", Snippets.indented("\ta", "  ", spaces))
     }
 
+    @Test
+    fun `without values a variable is its default, as for a language server's snippet`() {
+        assertEquals("class Name", Snippets.plain($$"class ${TM_FILENAME_BASE:Name}"))
+        assertEquals("class ", Snippets.plain($$"class $TM_FILENAME_BASE"))
+    }
+
+    @Test
+    fun `a variable takes its value`() {
+        val expansion = Snippets.expand($$"class $TM_FILENAME_BASE {}", values("TM_FILENAME_BASE" to "Widget"))
+        assertEquals("class Widget {}", expansion.text)
+        assertEquals(emptyList(), expansion.stops)
+    }
+
+    @Test
+    fun `a variable without a value here takes its default`() {
+        assertEquals("x = y", Snippets.expand($$"x = ${TM_SELECTED_TEXT:y}", values()).text)
+    }
+
+    @Test
+    fun `a value with snippet syntax in it is inserted as it is`() {
+        val expansion = Snippets.expand("$" + "CLIPBOARD", values("CLIPBOARD" to $$"${1:a} $b"))
+        assertEquals($$"${1:a} $b", expansion.text)
+        assertEquals($$$"$${1:a} $$b", expansion.template)
+    }
+
+    @Test
+    fun `a variable in a placeholder's default becomes the stop's value`() {
+        val expansion = Snippets.expand($$"class ${1:$TM_FILENAME_BASE}", values("TM_FILENAME_BASE" to "Widget"))
+        assertEquals("class Widget", expansion.text)
+        assertEquals(listOf(stop("TAB_1", "Widget")), expansion.stops)
+    }
+
+    @Test
+    fun `a variable VS Code does not know becomes a placeholder holding its name, after every stop`() {
+        val expansion = Snippets.expand($$"$1 $unknown $2", values())
+        assertEquals(" unknown ", expansion.text)
+        assertEquals(listOf("TAB_1", "TAB_2", "TAB_3"), expansion.stops.map { it.name })
+        assertEquals("unknown", expansion.stops.last().value)
+    }
+
+    @Test
+    fun `a variable written twice has one value, though the snippet is read twice`() {
+        var next = 0
+        val expansion = Snippets.expand($$"$UUID ${1:a} $1", { (++next).toString() })
+        assertEquals("1 a a", expansion.text)
+    }
+
+    @Test
+    fun `a transform rewrites the value`() {
+        val name = values("TM_FILENAME" to "my-widget.test.ts")
+        assertEquals("my-widget", Snippets.expand($$"${TM_FILENAME/\\..*$//}", name).text)
+        assertEquals("MyWidget", Snippets.expand($$"${TM_FILENAME/(.*?)\\..*/${1:/pascalcase}/}", name).text)
+        assertEquals("myWidget", Snippets.expand($$"${TM_FILENAME/(.*?)\\..*/${1:/camelcase}/}", name).text)
+        assertEquals("MY-WIDGET.TEST.TS", Snippets.expand($$"${TM_FILENAME/(.*)/${1:/upcase}/}", name).text)
+        assertEquals("my_widget_test_ts", Snippets.expand($$"${TM_FILENAME/[-.]/_/g}", name).text)
+        assertEquals("my_widget.test.ts", Snippets.expand($$"${TM_FILENAME/[-.]/_/}", name).text)
+    }
+
+    @Test
+    fun `a transform's conditions pick by whether the group matched`() {
+        val transform = $$"${TM_SELECTED_TEXT/(a)?.*/${1:?yes:no}/}"
+        assertEquals("yes", Snippets.expand(transform, values("TM_SELECTED_TEXT" to "abc")).text)
+        assertEquals("no", Snippets.expand(transform, values("TM_SELECTED_TEXT" to "xyz")).text)
+        assertEquals("no", Snippets.expand(transform, values()).text)
+        assertEquals("[x]", Snippets.expand($$"${TM_SELECTED_TEXT/(x)/[${1:+x}]/}", values("TM_SELECTED_TEXT" to "x")).text)
+        assertEquals("none", Snippets.expand($$"${TM_SELECTED_TEXT/(x)?.*/${1:-none}/}", values("TM_SELECTED_TEXT" to "y")).text)
+    }
+
+    @Test
+    fun `a transform that is not one leaves the value as it is`() {
+        assertEquals("abc", Snippets.expand($$"${TM_SELECTED_TEXT/(/x/}", values("TM_SELECTED_TEXT" to "abc")).text)
+    }
+
+    private fun values(vararg values: Pair<String, String>) = Snippets.Variables { values.toMap()[it] }
+
     private fun stop(name: String, value: String) = Snippets.TabStop(name, value, emptyList())
 }
 
