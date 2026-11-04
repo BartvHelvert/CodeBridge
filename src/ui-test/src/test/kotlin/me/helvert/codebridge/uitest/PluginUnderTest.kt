@@ -1,8 +1,10 @@
 package me.helvert.codebridge.uitest
 
+import com.intellij.driver.model.OnDispatcher
 import com.intellij.driver.sdk.ManualWaitForIndicators
 import com.intellij.driver.sdk.openFile
 import com.intellij.driver.sdk.ui.components.common.ideFrame
+import com.intellij.driver.sdk.waitFor
 import com.intellij.driver.sdk.waitForIndicators
 import com.intellij.ide.starter.community.PublicIdeDownloader
 import com.intellij.ide.starter.driver.driver.remoteDev.RemoteDevBackgroundRun
@@ -30,6 +32,7 @@ import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.deleteRecursively
 import kotlin.io.path.writeText
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * What a test installs, named for the plugin a user chose: each brings what that plugin depends on.
@@ -219,8 +222,12 @@ internal fun IDETestContext.runSplitIde(
         // Xvfb has no window manager to give the client's frame back the focus once its connection
         // dialog closes. Until a click lands on something that asks for it, such as an editor, no
         // window is focused, and a component asking for the focus in its window, as a new notebook
-        // cell does, never gets it: typing then finds no focus owner.
-        run.driver.ideFrame { }.ensureFocused()
+        // cell does, never gets it: typing then finds no focus owner. The driver's `ensureFocused`
+        // only calls `toFront`, which raises the frame without focusing it there; a cross-window
+        // `requestFocus` does focus it.
+        val ideFrame = run.driver.ideFrame { }
+        run.driver.withContext(OnDispatcher.EDT) { ideFrame.component.requestFocus() }
+        waitFor("the client's frame focused", FOCUS) { ideFrame.isFocused() }
     } catch (e: Throwable) {
         run.closeIdeAndWait()
         throw e
@@ -229,6 +236,8 @@ internal fun IDETestContext.runSplitIde(
 }
 
 private val STARTUP = 6.minutes
+
+private val FOCUS = 10.seconds
 
 /** The registry key for `JdkAuto`, which sets up a JDK for a project that names none or an unknown one. */
 private const val JDK_AUTO_SETUP = "jdk.auto.setup"
