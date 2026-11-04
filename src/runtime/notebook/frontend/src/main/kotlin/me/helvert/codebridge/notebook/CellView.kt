@@ -62,6 +62,9 @@ import java.awt.event.KeyEvent
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import java.awt.geom.RoundRectangle2D
+import javax.accessibility.AccessibleContext
+import javax.accessibility.AccessibleState
+import javax.accessibility.AccessibleStateSet
 import javax.swing.Icon
 import javax.swing.JComponent
 import javax.swing.JPanel
@@ -190,6 +193,18 @@ internal class CellView(private val project: Project, cell: CellDto, private val
         // The cell its toolbar's actions act on.
         override fun uiDataSnapshot(sink: DataSink) {
             sink[DATA_KEY] = this@CellView
+        }
+
+        // Named by its kind, and selected when it is: what a screen reader says of it, as VS Code's
+        // list of cells says of each.
+        override fun getAccessibleContext(): AccessibleContext {
+            if (accessibleContext == null) accessibleContext = object : AccessibleJPanel() {
+                override fun getAccessibleName(): String = if (kind == CellKinds.CODE) "Code cell" else "Markdown cell"
+
+                override fun getAccessibleStateSet(): AccessibleStateSet =
+                    super.getAccessibleStateSet().also { if (this@CellView.selected) it.add(AccessibleState.SELECTED) }
+            }
+            return accessibleContext
         }
     }
     /** What [toolbar] shows; after [component], its target. */
@@ -547,6 +562,9 @@ internal class CellView(private val project: Project, cell: CellDto, private val
 
     /** Draws the cell as one of those selected, or not; [current] is the one the selection ends on. */
     fun highlight(on: Boolean, current: Boolean = on) {
+        if (selected != on) component.accessibleContext.firePropertyChange(
+            AccessibleContext.ACCESSIBLE_STATE_PROPERTY, if (on) null else AccessibleState.SELECTED, if (on) AccessibleState.SELECTED else null,
+        )
         selected = on
         this.current = current
         updateToolbar()

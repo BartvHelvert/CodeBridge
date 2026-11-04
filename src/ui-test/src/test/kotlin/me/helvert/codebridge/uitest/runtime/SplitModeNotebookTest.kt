@@ -1,5 +1,6 @@
 package me.helvert.codebridge.uitest.runtime
 
+import com.intellij.driver.client.Remote
 import com.intellij.driver.sdk.ui.components.UiComponent
 import com.intellij.driver.sdk.ui.components.common.JEditorUiComponent
 import com.intellij.driver.sdk.ui.components.common.editor.completionList
@@ -324,6 +325,15 @@ class SplitModeNotebookTest {
             fun hostCells(cells: String) = awaitProbeValue("the host's copy of the cells: $cells", { command("probe.notebookState") }) {
                 it?.contains(""""example.ipynb":$cells""") == true
             }
+            // Which cells are selected, as a screen reader is told.
+            fun selected(): List<Boolean> = runCatching {
+                driver.withContext {
+                    frame.xx("$notebook//div[@accessiblename='Code cell']").list().map { cell ->
+                        val context = driver.cast(checkNotNull(cell.component.getAccessibleContext()), AccessibleStatesRef::class)
+                        context.getAccessibleStateSet().toArray().any { it.toDisplayString() == "selected" }
+                    }
+                }
+            }.getOrDefault(emptyList())
 
             // The robot's own drag: it posts the drag events, which pressing and moving the mouse do not.
             // Keys it presses are held in the events it posts.
@@ -373,7 +383,9 @@ class SplitModeNotebookTest {
             awaitProbeValue("the move of both undone as one step", ::cells) { it == listOf("two", "three", "one", "two") }
             hostCells("""["two\n2\n2","three\n3\n3","one\n1\n1","two\n2\n2"]""")
 
-            // The undo leaves both selected again, so they are dragged together once more.
+            // The undo leaves both selected again, so they are dragged together once more. The cells come
+            // back from the backend apart from the selection, which may follow them a moment later.
+            awaitProbeValue("both cells selected again by the undo", ::selected) { it == listOf(true, true, false, false) }
             driver.withContext { driver.ui.dragAndDrop(handles()[0], to = handles()[3]) }
             awaitProbeValue("both cells, still selected, moved last again", ::cells) { it == listOf("one", "two", "two", "three") }
             hostCells("""["one\n1\n1","two\n2\n2","two\n2\n2","three\n3\n3"]""")
@@ -788,4 +800,19 @@ class SplitModeNotebookTest {
             }
         """.trimIndent()
     }
+}
+
+@Remote("javax.accessibility.AccessibleContext")
+internal interface AccessibleStatesRef {
+    fun getAccessibleStateSet(): AccessibleStateSetRef
+}
+
+@Remote("javax.accessibility.AccessibleStateSet")
+internal interface AccessibleStateSetRef {
+    fun toArray(): Array<AccessibleStateRef>
+}
+
+@Remote("javax.accessibility.AccessibleState")
+internal interface AccessibleStateRef {
+    fun toDisplayString(): String
 }
