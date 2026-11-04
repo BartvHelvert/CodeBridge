@@ -14,6 +14,8 @@
         <!-- Before the live-template contributor, whose items are the ones to leave out. -->
         <completion.contributor language="textmate" order="first, before liveTemplates"
                                 implementationClass="me.helvert.codebridge.textmate.CodeBridgeTextMateSnippets"/>
+        <!-- Ahead of TextMate's own, which compiles the extension's JavaScript patterns as Java ones. -->
+        <lineIndentProvider implementation="me.helvert.codebridge.textmate.CodeBridgeTextMateLineIndent" order="first"/>
     </extensions>
     <extensions defaultExtensionNs="me.helvert.codebridge">
         <fileLanguage implementation="me.helvert.codebridge.textmate.CodeBridgeTextMateFileLanguage"/>

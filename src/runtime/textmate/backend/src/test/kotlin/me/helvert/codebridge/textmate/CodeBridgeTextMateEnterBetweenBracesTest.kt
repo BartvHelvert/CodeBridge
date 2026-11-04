@@ -4,6 +4,8 @@ import com.intellij.codeInsight.editorActions.enter.EnterBetweenBracesDelegate
 import com.intellij.lang.LanguageExtensionPoint
 import com.intellij.openapi.extensions.DefaultPluginDescriptor
 import com.intellij.openapi.extensions.ExtensionPointName
+import com.intellij.openapi.extensions.LoadingOrder
+import com.intellij.psi.codeStyle.lineIndent.LineIndentProvider
 import com.intellij.testFramework.LightProjectDescriptor
 import com.intellij.testFramework.fixtures.IdeaTestFixtureFactory
 import com.intellij.testFramework.runInEdtAndWait
@@ -18,7 +20,8 @@ import kotlin.test.assertEquals
 
 /**
  * Enter between brackets the extension declares opens a line between them, and between characters
- * it does not declare it is an ordinary line break.
+ * it does not declare it is an ordinary line break. After a line its `increaseIndentPattern` matches
+ * -- a JavaScript pattern Java alone cannot compile -- the new line is indented.
  */
 class CodeBridgeTextMateEnterBetweenBracesTest {
     @Test
@@ -40,6 +43,9 @@ class CodeBridgeTextMateEnterBetweenBracesTest {
                 // The point reads a descriptor even for a bean that carries its instance.
                 delegate.pluginDescriptor = DefaultPluginDescriptor("me.helvert.codebridge")
                 DELEGATES.point.registerExtension(delegate, fixture.testRootDisposable)
+                LINE_INDENT_PROVIDERS.point.registerExtension(
+                    CodeBridgeTextMateLineIndent(), LoadingOrder.FIRST, fixture.testRootDisposable,
+                )
             }
             service.install(Path.of(checkNotNull(System.getProperty("codebridge.textmate.vsix")))) {}
             awaitBundle(present = true)
@@ -63,6 +69,9 @@ class CodeBridgeTextMateEnterBetweenBracesTest {
             assertEquals("}", split[2])
 
             assertEquals(2, enter("fn foo() a<caret>b").lines().size)
+
+            assertEquals("if ready {\n    <caret>", enter("if ready {<caret>"))
+            assertEquals("plain\n<caret>", enter("plain<caret>"))
         } finally {
             service.uninstall("codebridge.textmate-probe")
             awaitBundle(present = false)
@@ -89,5 +98,7 @@ class CodeBridgeTextMateEnterBetweenBracesTest {
     private companion object {
         private val DELEGATES =
             ExtensionPointName<LanguageExtensionPoint<EnterBetweenBracesDelegate>>("com.intellij.enterBetweenBracesDelegate")
+        private val LINE_INDENT_PROVIDERS =
+            ExtensionPointName<LineIndentProvider>("com.intellij.lineIndentProvider")
     }
 }

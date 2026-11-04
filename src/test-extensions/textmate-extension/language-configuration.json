@@ -17,7 +17,7 @@
     ]
   ],
   "indentationRules": {
-    "increaseIndentPattern": "^.*\\{[^}\"']*$",
+    "increaseIndentPattern": "^.*(\\bif\\b.*)?{[^}\"']*$",
     "decreaseIndentPattern": "^\\s*\\}"
   }
 }
