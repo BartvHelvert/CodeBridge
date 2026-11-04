@@ -96,6 +96,20 @@ class OnTypeFormattingTest : EditorFixture() {
     }
 
     @Test
+    fun `a keystroke queued behind slow work still reaches the formatter`() = onEdt {
+        val features = open(settings = """{"editor.formatOnType": true}""")
+        answer("""[{"range":${range(1, 8, 1, 8)},"text":";"}]""")
+        // Longer than the host was once polled for before the formatter was given up on.
+        fixture.project.service<HostedLanguageServers>().afterSync(fixture.editor.document) { Thread.sleep(3_000) }
+
+        val applied = start("=", mirrored = false)
+
+        assertTrue(await(applied))
+        assertEquals("let x =;", fixture.editor.document.text)
+        features.hostStopped()
+    }
+
+    @Test
     fun `a language block wins over the setting itself`() {
         val settings = Json.parseToJsonElement(
             """{"editor.formatOnType": false, "[rust][toml]": {"editor.formatOnType": true}, "[go]": {}}"""
@@ -110,12 +124,13 @@ class OnTypeFormattingTest : EditorFixture() {
     /** Types [ch] at the end of the document, mirrors it, and waits for the formatter's edits. */
     private fun type(ch: String): Boolean = await(start(ch))
 
-    private fun start(ch: String): CompletableFuture<Boolean> {
+    /** Types [ch]; [mirrored] sends it to the host straight away, or else leaves it to the sync queue. */
+    private fun start(ch: String, mirrored: Boolean = true): CompletableFuture<Boolean> {
         val document = fixture.editor.document
         WriteCommandAction.runWriteCommandAction(fixture.project) { document.insertString(document.textLength, ch) }
         fixture.editor.caretModel.moveToOffset(document.textLength)
         val features = HostedLanguageFeatures.getInstance(fixture.project)
-        features.documentChanged(fixture.file.virtualFile, HostedLanguageFeatures.Snapshot(document.text, true))
+        if (mirrored) features.documentChanged(fixture.file.virtualFile, HostedLanguageFeatures.Snapshot(document.text, true))
         val typed = CodeBridgeOnTypeFormatting.typed(fixture.project, fixture.editor, fixture.file, ch)
         return started { typed.await() }
     }

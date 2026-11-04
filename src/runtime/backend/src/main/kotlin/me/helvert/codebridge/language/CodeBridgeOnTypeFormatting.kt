@@ -8,6 +8,7 @@ import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.asContextElement
 import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.project.Project
@@ -16,6 +17,7 @@ import kotlinx.coroutines.*
 import me.helvert.codebridge.exthost.protocol.payload.Formatting
 import me.helvert.codebridge.exthost.protocol.payload.Position
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * An extension's on-type formatter, asked once one of the characters it names has been typed, as
@@ -42,8 +44,16 @@ internal object CodeBridgeOnTypeFormatting {
         val indent = CodeStyle.getIndentOptions(file)
         val options = Formatting.Options(indent.TAB_SIZE, !indent.USE_TAB_CHARACTER)
         val modality = ModalityState.defaultModalityState()
+        // Queued behind the sync of the keystroke rather than polled for: that queue also starts and
+        // attaches hosts, and on a busy machine the keystroke has waited there for seconds.
+        val synced = CompletableDeferred<Unit>()
+        project.service<HostedLanguageServers>().afterSync(document) { synced.complete(Unit) }
         return features.scope.async {
             try {
+                if (withTimeoutOrNull(SYNC_TIMEOUT) { synced.await() } == null) {
+                    LOG.info("Dropped on-type formatting of ${virtualFile.name}: the keystroke did not reach the extension host in time")
+                    return@async false
+                }
                 // The provider is waited on by a blocking call, which the IDE's own formatter makes too.
                 val edits = withContext(Dispatchers.IO) { features.onTypeFormatting(virtualFile, handle, text, position, ch, options) }
                 val located = edits?.let { CodeBridgeTextEdits.locate(text, it) } ?: return@async false
@@ -73,6 +83,9 @@ internal object CodeBridgeOnTypeFormatting {
     private val DONE: Deferred<Boolean> = CompletableDeferred(false)
 
     private const val COMMAND = "Format on Type"
+
+    /** How long the keystroke may take to reach the host; typing on meanwhile drops the answer anyway. */
+    private val SYNC_TIMEOUT = 20.seconds
 
     private val LOG = Logger.getInstance(CodeBridgeOnTypeFormatting::class.java)
 }
