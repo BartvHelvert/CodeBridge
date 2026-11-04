@@ -19,9 +19,7 @@ import me.helvert.codebridge.exthost.protocol.payload.DebugAdapters
 import me.helvert.codebridge.exthost.protocol.payload.DebugService
 import me.helvert.codebridge.manifest.VsixArchive
 import java.io.Closeable
-import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.StandardCopyOption
 import java.util.*
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
@@ -55,7 +53,8 @@ class HostedDebugSession(
     private val providers = CopyOnWriteArrayList<Provider>()
     private val sessionId = UUID.randomUUID().toString()
     private val ownsHost = sharedHost == null
-    private val locations = sharedLocations ?: extensions.associate { it.id to storage.resolve("extensions").resolve(it.id) }
+    /** Where the host runs each extension from: where it is installed, as VS Code runs them. */
+    private val locations = sharedLocations ?: extensions.associate { it.id to it.directory }
     private val descriptions = extensions.map { extension -> buildJsonObject {
         ExtensionHostInitData.describeExtension(extension.manifest, locations.getValue(extension.id)).forEach { (k, v) -> put(k, v) }
         put("targetPlatform", extension.targetPlatform ?: "undefined")
@@ -91,16 +90,6 @@ class HostedDebugSession(
     fun prepare(raw: JsonObject, substitute: (JsonObject, (String) -> String?) -> JsonObject,
                 checkCanceled: () -> Unit = {}, parent: String? = null) {
         DebugLaunch.validate(raw)
-        if (ownsHost) for (extension in extensions) {
-            val destination = locations.getValue(extension.id)
-            Files.walk(extension.directory).use { paths -> paths.forEach { source ->
-                checkCanceled()
-                require(!Files.isSymbolicLink(source)) { "Extension contains a symbolic link: $source" }
-                val target = destination.resolve(extension.directory.relativize(source).toString())
-                if (Files.isDirectory(source)) Files.createDirectories(target)
-                else Files.copy(source, target, StandardCopyOption.COPY_ATTRIBUTES)
-            } }
-        }
         checkCanceled()
         // A shared host is the project's, which is initialized before it is shared.
         ownHost?.let { own ->
@@ -280,7 +269,7 @@ class HostedDebugSession(
                     report("CodeBridge does not implement the workbench command '$command'")
                     return null
                 }
-                installPayload(call.argsJson, extensions, locations, install)
+                installPayload(call.argsJson, extensions, install)
             }
             "MainThreadMessageService" -> if (call.method == $$"$showMessage")
                 report(Args.of(call.method, call.argsJson).strOrNull(1).orEmpty())
@@ -336,20 +325,19 @@ class HostedDebugSession(
         /**
          * `workbench.extensions.command.installFromVSIX`, as a debugger extension calls it with the
          * platform package it downloaded for itself -- CodeLLDB does on first activation. Only a
-         * package of an extension the host runs, at the same version, is accepted. It is installed,
-         * and unpacked over the host's private copy, so the running host has it without a restart.
+         * package of an extension the host runs, at the same version, is accepted. [install] unpacks
+         * it into the directory the host runs the extension from, so the running extension has it
+         * without a restart, as in VS Code.
          */
-        fun installPayload(argsJson: String, extensions: List<InstalledExtension>, locations: Map<String, Path>,
-                           install: (Path) -> InstalledExtension) {
+        fun installPayload(argsJson: String, extensions: List<InstalledExtension>, install: (Path) -> InstalledExtension) {
             val args = Args.of($$"$executeCommand", argsJson)
             val uri = DebugService.findFileUri(args.element(1)) ?: error("Missing VSIX file URI")
             val pathText = uri.path
             val path = Path.of(if (System.getProperty("os.name").startsWith("Windows")) pathText.removePrefix("/") else pathText)
             val manifest = VsixArchive.readManifest(path).manifest ?: error("Invalid downloaded VSIX")
-            val extension = extensions.singleOrNull { it.id.equals(manifest.id, true) && it.manifest.version == manifest.version }
+            extensions.singleOrNull { it.id.equals(manifest.id, true) && it.manifest.version == manifest.version }
                 ?: error("The downloaded package does not match an extension this host runs")
             install(path)
-            VsixArchive.unpack(path, locations.getValue(extension.id))
         }
 
         /** Far above any `seq` IntelliJ's client numbers its own requests with, which count from 1. */

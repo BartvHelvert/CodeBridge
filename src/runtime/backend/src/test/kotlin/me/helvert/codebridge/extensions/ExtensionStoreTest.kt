@@ -254,4 +254,37 @@ class ExtensionStoreTest {
         assertEquals("1.12.3", installed.manifest.version)
         assertTrue(Files.exists(installed.directory.resolve(assertNotNull(installed.manifest.main))))
     }
+
+    @Test
+    fun `a replaced or uninstalled extension stays until no host runs it`() {
+        val store = store()
+        val first = store.install(vsix()).extension.directory
+        val second = store.install(vsix(version = "1.1.0")).extension.directory
+        store.collect(inUse = setOf(first))
+        assertTrue(Files.exists(first), "A host still runs the replaced version")
+        store.collect(inUse = emptySet())
+        assertFalse(Files.exists(first), "Collected once no host runs it")
+        assertTrue(Files.exists(second), "The installed version is never collected")
+
+        assertTrue(store.uninstall("acme.demo"))
+        assertTrue(Files.exists(second), "Uninstalling leaves the files for a host that runs them")
+        store.collect(inUse = emptySet())
+        assertFalse(Files.exists(second))
+    }
+
+    @Test
+    fun `a platform package goes into the installed extension's own directory`() {
+        val store = store()
+        val installed = store.install(vsix()).extension
+        val listed = store.list()
+        val added = store.addPlatformPackage(vsix(platform = "win32-x64", extras = listOf(
+            "extension/main.js" to "module.exports = {}", "extension/adapter/codelldb.exe" to "binary")))
+        assertEquals(installed.directory, added.directory, "Where the running extension already is")
+        assertEquals("binary", Files.readString(installed.directory.resolve("adapter/codelldb.exe")))
+        assertEquals("win32-x64", added.targetPlatform)
+        assertNotSame(listed, store.list(), "Listed anew")
+
+        assertFailsWith<IllegalArgumentException>("Another version") { store.addPlatformPackage(vsix(version = "2.0.0")) }
+        assertFailsWith<IllegalArgumentException>("Not installed") { store.addPlatformPackage(vsix(name = "other")) }
+    }
 }

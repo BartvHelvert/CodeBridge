@@ -763,19 +763,12 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
         val storage = claimStorage(root, live)
         this.storage = storage
         extensions = installed
-        status("Copying ${installed.size} extension(s)")
-        locations = installed.associate { it.id to storage.resolve("extensions").resolve(it.id) }
-        // Private copies allow platform payload installation without mutating the extension store.
-        for (extension in installed) Files.walk(extension.directory).use { paths -> paths.forEach { source ->
-            check(!disposed) { "Project host startup canceled" }
-            require(!Files.isSymbolicLink(source)) { "Extension contains a symbolic link: $source" }
-            val target = locations.getValue(extension.id).resolve(extension.directory.relativize(source).toString())
-            if (Files.isDirectory(source)) Files.createDirectories(target)
-            else Files.copy(source, target)
-        } }
-        // A private copy per host start, of everything installed. rust-analyzer alone ships a 38MB
-        // server binary and its debug symbols beside it.
-        phases.mark("copying ${installed.size} extension(s)")
+        // Run from where they are installed, as VS Code runs extensions: the store keeps a version a
+        // running host uses until it no longer does.
+        locations = installed.associate { it.id to it.directory }
+        running[storage] = installed.mapTo(HashSet()) { it.directory }
+        collectExtensions()
+        phases.mark("collecting replaced extensions")
         status("Reading extension settings")
         val userSettings = prepareUserSettings()
         lateinit var hosts: ExtensionHostRouter
@@ -981,13 +974,12 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
      */
     private suspend fun installPayload(call: MainThreadCall): MainThreadResult {
         val running = extensions
-        val at = locations
         // Held until the unpack is done, so the installation it makes does not restart this host.
         installingPayload.incrementAndGet()
         return try {
             withContext(Dispatchers.IO) {
-                HostedDebugSession.installPayload(call.argsJson, running, at) { path ->
-                    ExtensionInstallationService.getInstance().install(path) { }.extension
+                HostedDebugSession.installPayload(call.argsJson, running) { path ->
+                    ExtensionInstallationService.getInstance().addPlatformPackage(path)
                 }
             }
             MainThreadResult()
@@ -1261,10 +1253,14 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
      * Deliberately not a delete. `exthost-stdout.log` lives in there, and a host that has just
      * stopped is exactly the one whose log someone wants -- `SplitModeExtensionTest` reads it out of
      * this directory to explain a failure, and so does anyone diagnosing an extension by hand.
-     * Keeping the last generation costs one copy on disk until a host starts again.
+     *
+     * The extensions it ran are let go of, so a version replaced or uninstalled meanwhile goes.
      */
     private fun releaseStorage() {
-        live.remove(storage ?: return)
+        val storage = storage ?: return
+        running.remove(storage)
+        collectExtensions()
+        live.remove(storage)
     }
 
     companion object {
@@ -1328,10 +1324,10 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
         private val LANGUAGE_IN_BLOCK = Regex("""\[([^\[\]]+)]""")
 
         /**
-         * Per-session scratch: one directory per started host, holding a private copy of every
-         * installed extension so the host can write platform payloads into one without mutating the
-         * extension store. Nothing here outlives the host that made it -- persistent extension state
-         * is [HostedWorkbench]'s `codebridge/state`, which this must never be confused with.
+         * Per-session scratch: one directory per started host, holding its logs. Nothing here
+         * outlives the host that made it -- persistent extension state is [HostedWorkbench]'s
+         * `codebridge/state`, which this must never be confused with. The extensions themselves
+         * run from the extension store.
          */
         private const val HOST_STORAGE = "codebridge/hosts"
 
@@ -1342,16 +1338,28 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
          * Storage directories belonging to a host running right now.
          *
          * Application-wide, because the system directory is shared by every project in the IDE and
-         * the sweep below must not delete a sibling project's live copies. Anything under the root
+         * the sweep below must not delete a sibling project's live storage. Anything under the root
          * that is not in here belongs to a run that has ended -- normally or by a crash.
          */
         private val live = ConcurrentHashMap.newKeySet<Path>()
 
         /**
+         * The installed extensions' directories each live host, by its storage, runs extensions
+         * from: application-wide, as [live] is, since every project's host runs from the same store.
+         */
+        private val running = ConcurrentHashMap<Path, Set<Path>>()
+
+        /** Deletes replaced and uninstalled extensions no host runs any more. Never throws. */
+        private fun collectExtensions() {
+            runCatching { ExtensionInstallationService.getInstance().collect(running.values.flatten().toSet()) }
+                .onFailure { LOG.warn("Could not delete replaced extensions", it) }
+        }
+
+        /**
          * Removes host storage no live host owns, and the directory this one used to be called.
          *
-         * Storage used to accumulate without limit: a directory per host start, each a full copy of
-         * every installed extension, and nothing ever deleted one. Sweeping here rather than at stop
+         * Storage used to accumulate without limit: a directory per host start, and nothing ever
+         * deleted one. Sweeping here rather than at stop
          * bounds that at one abandoned generation while leaving the last host's `exthost-stdout.log`
          * readable for as long as anyone is likely to want it.
          *
@@ -1373,10 +1381,8 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
          * A fresh storage directory under [root], added to [live]: the lowest-numbered one no host
          * holds, so one IDE's host runs from the same path every time.
          *
-         * Not a random name: Windows asks whether a program may accept connections once per path,
-         * and redhat.java runs a server from the copy of its own JRE in here -- a new directory
-         * each start asked again after every IDE launch. A slot the sweep could not empty, its
-         * files still held by a process outliving its host, is passed over.
+         * Not a random name: a host's paths stay the same from one start to the next. A slot the
+         * sweep could not empty, its files still held by a process outliving its host, is passed over.
          */
         internal fun claimStorage(root: Path, live: MutableSet<Path>): Path = synchronized(live) {
             generateSequence(0) { it + 1 }.map { root.resolve("host-$it") }.first { slot ->

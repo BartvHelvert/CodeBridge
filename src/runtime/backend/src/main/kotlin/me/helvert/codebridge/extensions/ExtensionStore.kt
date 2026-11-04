@@ -59,9 +59,12 @@ data class ExtensionInstallResult(
 )
 
 /**
- * One active version per extension. Package directories are immutable generations; an atomic
- * registry replacement publishes an install only after extraction and validation succeed.
- * Old generations remain available to running hosts and can be collected once host ownership exists.
+ * One active version per extension. Each install unpacks into a directory of its own, a generation,
+ * and an atomic registry replacement publishes it only after extraction and validation succeed.
+ *
+ * Extension hosts run extensions from here, as VS Code runs them from its extensions directory, so
+ * a generation the registry no longer names may still be running: it is deleted by [collect] once no
+ * host uses it, as VS Code deletes an obsolete version once no window does.
  */
 class ExtensionStore(root: Path, private val targetPlatform: String = currentTargetPlatform()) {
     private val root = root.toAbsolutePath().normalize()
@@ -79,8 +82,8 @@ class ExtensionStore(root: Path, private val targetPlatform: String = currentTar
      *
      * Hot: decorations resolve a theme colour per range, and every colour asks this. Parsed afresh
      * each time, that was GitLens' 1MB `package.json` per line of its blame column, a second for a
-     * short file. The registry says everything a parse depends on -- package directories are never
-     * changed once installed, and each install gets a new one -- and is replaced atomically, so its
+     * short file. The registry says everything a parse depends on -- each install gets a directory of
+     * its own, and a platform package added to one writes the registry too -- and is replaced atomically, so its
      * text can be read without the lock to see whether what was parsed still holds.
      */
     @Synchronized
@@ -141,18 +144,57 @@ class ExtensionStore(root: Path, private val targetPlatform: String = currentTar
     }
 
     /**
+     * Unpacks [vsix], a platform package of an installed extension at the same version, into that
+     * extension's own directory: what VS Code does when a running extension installs the package it
+     * downloaded for this machine -- CodeLLDB does, and then runs what it brought from where it is.
+     * The registry entry is written again, with the package's platform, so listing reads it anew.
+     */
+    @Synchronized
+    fun addPlatformPackage(vsix: Path): InstalledExtension = locked {
+        val manifest = VsixArchive.readManifest(vsix).manifest ?: throw IllegalArgumentException("Invalid VSIX: $vsix")
+        val platform = readTargetPlatform(vsix)
+        require(platform == null || platform == "universal" || platform == targetPlatform) {
+            "This VSIX targets $platform; this machine requires $targetPlatform or a universal package."
+        }
+        val entries = readEntries()
+        val entry = entries.firstOrNull { it.id == manifest.id.lowercase(Locale.ROOT) }
+            ?: throw IllegalArgumentException("${manifest.id} is not installed")
+        val installed = installed(entry)
+        require(installed.manifest.version == manifest.version) {
+            "${manifest.id} ${manifest.version} is a package of another version than the installed ${installed.manifest.version}"
+        }
+        VsixArchive.unpack(vsix, installed.directory)
+        val updated = entry.copy(targetPlatform = platform ?: entry.targetPlatform, installedAt = Instant.now().toString())
+        writeEntries(entries.map { if (it.id == entry.id) updated else it })
+        installed(updated)
+    }
+
+    /**
      * Removes an installed extension. Returns false when it was not installed.
      *
-     * The registry is rewritten before the files go, so a failure part-way leaves an orphaned
-     * directory rather than a registry entry pointing at something half-deleted.
+     * Only the registry changes: a host may still be running the extension from its directory, which
+     * [collect] deletes once none is.
      */
     @Synchronized
     fun uninstall(id: String): Boolean = locked {
         val entries = readEntries()
         val entry = entries.firstOrNull { it.id == id.lowercase(Locale.ROOT) } ?: return@locked false
         writeEntries(entries.filterNot { it.id == entry.id })
-        deleteGeneration(packageDirectory(entry.directory))
         true
+    }
+
+    /**
+     * Deletes the generations the registry no longer names -- replaced or uninstalled -- but for
+     * those in [inUse], the directories running hosts run extensions from. One that cannot be
+     * deleted yet, its files still held, is left for the next time.
+     */
+    @Synchronized
+    fun collect(inUse: Set<Path>) = locked {
+        val named = readEntries().mapTo(HashSet()) { packageDirectory(it.directory) }
+        val keep = inUse.mapTo(HashSet()) { it.toAbsolutePath().normalize() }
+        Files.list(packages).use { directories -> directories.toList() }
+            .filter { it !in named && it !in keep && Files.isDirectory(it) }
+            .forEach { stale -> runCatching { deleteGeneration(stale) } }
     }
 
     /**

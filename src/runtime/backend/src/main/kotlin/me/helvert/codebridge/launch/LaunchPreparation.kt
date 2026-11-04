@@ -51,7 +51,7 @@ internal class LaunchPreparation(private val project: Project) {
         val extensions = ExtensionInstallationService.getInstance().list()
         val selected = DebugLaunch.selectExtensions(raw["type"]?.jsonPrimitive?.contentOrNull ?: "", extensions)
         val session = project.service<HostedLanguageServers>().debugSession(selected, sessionFolder, settings,
-            install = { path -> ExtensionInstallationService.getInstance().install(path) { }.extension })
+            install = { path -> ExtensionInstallationService.getInstance().addPlatformPackage(path) })
         try {
             val input = DebugLaunch.inputs(inputs, Prompts(session))
             // Blocking, as the variable substitution it calls back into is.
