@@ -8,6 +8,7 @@ import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.platform.ide.progress.ModalTaskOwner
 import com.intellij.platform.ide.progress.runWithModalProgressBlocking
 import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.Flow
 import java.awt.Component
 import kotlin.time.Duration.Companion.seconds
 
@@ -33,10 +34,14 @@ class BackendRequests : Disposable {
     }
 
     /** Reconnect after backend availability changes; every subscription starts with a revision. */
-    fun watchExtensions(changed: () -> Unit, failed: (Throwable) -> Unit): Job = scope.launch {
+    fun watchExtensions(changed: () -> Unit, failed: (Throwable) -> Unit): Job =
+        watch({ CodeBridgeApi.getInstance().extensionChanges() }, { changed() }, failed)
+
+    /** Each value of the backend's [flow], on the UI; subscribed again after backend availability changes. */
+    fun <T> watch(flow: suspend () -> Flow<T>, changed: (T) -> Unit, failed: (Throwable) -> Unit): Job = scope.launch {
         while (isActive) {
             try {
-                CodeBridgeApi.getInstance().extensionChanges().collect { onUi(changed) }
+                flow().collect { value -> onUi { changed(value) } }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {

@@ -15,7 +15,8 @@ class ExtensionActivations {
          * Whether the user is told, as VS Code's release build decides: only a missing dependency is
          * something they can act on. Any other failure is the extension's to explain -- golang.go
          * without Go installed shows its own "Failed to find the go binary" message and then rejects
-         * `activate` with no reason, which would otherwise read "failed: undefined."
+         * `activate` with no reason, which would otherwise read "failed: undefined." Every failure is
+         * still marked on the VS Code Extensions page, as VS Code's runtime status.
          */
         val notifiesUser: Boolean get() = missingDependency != null
     }

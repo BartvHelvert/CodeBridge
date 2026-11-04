@@ -1,4 +1,5 @@
 package me.helvert.codebridge.extensions
+import com.intellij.icons.AllIcons
 import com.intellij.ide.impl.ProjectUtil
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -63,6 +64,12 @@ class InstalledPanel(
 
     /** Ids of the extensions disabled in [project]'s workspace alone, lower-case. */
     private var disabledHere: Set<String> = emptySet()
+
+    /**
+     * Why each extension [project]'s host could not activate failed, by lower-case id: VS Code's
+     * runtime status, which marks the extension in its list rather than notifying.
+     */
+    private var failedHere: Map<String, String> = emptyMap()
 
     private var model: List<InstalledExtensionDto> = emptyList()
     private var selected: InstalledExtensionDto? = null
@@ -130,6 +137,15 @@ class InstalledPanel(
 
         if (ApplicationManager.getApplication() != null) {
             requests.watchExtensions(::refresh) { say("Could not load installed extensions: ${it.message}") }
+            project?.let { project ->
+                requests.watch({ marketplace { activationFailures(project.projectId()) } }, { failures ->
+                    if (!disposed && failures != failedHere) {
+                        failedHere = failures
+                        rebuildRows()
+                        selected?.let { detailsComponent.show(it) }
+                    }
+                }) {}
+            }
         }
     }
 
@@ -231,6 +247,8 @@ class InstalledPanel(
 
     override fun dispose() { disposed = true; requests.dispose() }
 
+    private fun failure(extension: InstalledExtensionDto): String? = failedHere[extension.id.lowercase()]
+
     /** Installed rows use enable switches; Uninstall is in the detail header's option button. */
     private inner class ExtensionRow(private val extension: InstalledExtensionDto) : ListedRow() {
 
@@ -250,6 +268,7 @@ class InstalledPanel(
             }
             metrics(
                 Metric(extension.version),
+                failure(extension)?.let { Metric("Activation failed", AllIcons.General.Error) },
             )
         }
     }
@@ -259,6 +278,8 @@ class InstalledPanel(
         private val name = JBLabel()
         private val links = JPanel(ListLayout.horizontal(12))
         private val version = JBLabel()
+        /** The host's reason, when it could not activate the extension. */
+        private val failureLine = JBLabel(AllIcons.General.Error).apply { setAllowAutoWrapping(true) }
 
         /**
          * Enable or Disable everywhere, as the IDE's plugin page; disabling in this workspace alone
@@ -292,6 +313,7 @@ class InstalledPanel(
             textRows.border = DetailsLayout.textRowsBorder()
             textRows.add(name, ListLayout.GrowPolicy.GROW)
             textRows.add(links, ListLayout.GrowPolicy.GROW)
+            textRows.add(failureLine, ListLayout.GrowPolicy.GROW)
             top.add(textRows, ListLayout.GrowPolicy.GROW)
             top.add(nameAndButtons, ListLayout.GrowPolicy.GROW)
             add(top, BorderLayout.NORTH)
@@ -338,6 +360,7 @@ class InstalledPanel(
             description.text = ""
             links.removeAll(); facts.removeAll()
             links.isVisible = false
+            failureLine.isVisible = false
             action.isVisible = false
             revalidate(); repaint()
         }
@@ -354,6 +377,9 @@ class InstalledPanel(
                 setHyperlinkTarget(registryPageUrl(extension.publisher, extension.name))
             })
             links.isVisible = true
+            val failed = failure(extension)
+            failureLine.text = failed?.let { "Activation failed: $it" }.orEmpty()
+            failureLine.isVisible = failed != null
 
             description.text = extension.description.orEmpty()
             description.caretPosition = 0

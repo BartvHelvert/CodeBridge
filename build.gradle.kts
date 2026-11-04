@@ -332,6 +332,17 @@ tasks.register<Zip>("buildTextMateFixture") {
     }
 }
 
+tasks.register<Zip>("buildActivationFailureFixture") {
+    group = "distribution"
+    description = "Packages the probe whose activate() throws, for the Extensions page's runtime status, as a VSIX."
+    archiveFileName.set("codebridge-activation-failure-probe.vsix")
+    destinationDirectory.set(layout.buildDirectory.dir("fixtures"))
+    from("src/test-extensions/activation-failure-extension") {
+        into("extension")
+        exclude("README.md")
+    }
+}
+
 tasks.register<Zip>("buildWorkbenchFixture") {
     group = "distribution"
     description = "Packages the decorations and diff probe the split-mode workbench test drives, as a VSIX."
