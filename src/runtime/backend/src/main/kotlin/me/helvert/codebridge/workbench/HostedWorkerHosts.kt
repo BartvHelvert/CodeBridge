@@ -86,7 +86,7 @@ class HostedWorkerHosts(private val scope: CoroutineScope) {
             else -> null
         } ?: return null
         if (!Files.isRegularFile(file)) return null
-        return WebviewResourceDto(Files.readAllBytes(file), HostedWebviews.mimeType(file))
+        return WebviewResourceDto(Files.readAllBytes(file), HostedWebviews.mimeType(file), version = "")
     }
 
     /**

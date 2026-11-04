@@ -45,4 +45,18 @@ tree whose item opens a webview panel (`webview.js`), which posts its clicks and
 `probe.webviewState` report what the extension saw. The "Probe Webview" container holds a webview view,
 whose resolutions, clicks and visibility changes `probe.viewState` reports.
 
+`custom-editor-probe.js` is what `SplitModeCustomEditorTest` opens in the client: a custom text
+editor for `.probetext` files, whose Append button adds `!` to the text with a workspace edit, and a
+custom editor for `.probecounter` files that keeps a number of its own, read from the file, whose
+Increment button is an edit it undoes and redoes, written back when saved. `probe.customEditorState`
+reports what each was asked to resolve, undo, redo and save. `probe.textViewer` is the text editor
+again, for `.probetext` files too, but opened only when asked for (`"priority": "option"`), as the Hex
+Editor is: *Open With* in the Project view opens it. `.probetext` is also a language of its own, `probetext`,
+with no icon, so the backend draws its files with a monogram that the custom editor's tab must show too. The
+counter editor also claims `.probecounter.pdf`, a name the IDE would otherwise hand to the system's PDF
+viewer, so that opening one from the Project view must still reach the custom editor. A third, for
+`.probeheavy` files, shows a page as heavy as draw.io's: it loads every `heavy-*.js` script of the
+workspace through `asWebviewUri`, `heavy-big.js` first, and reports in `loads` how long that took
+and when each script arrived.
+
 Packaged by `gradlew buildWorkbenchFixture`; plain JavaScript, no dependencies.

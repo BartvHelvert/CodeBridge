@@ -749,3 +749,21 @@ launch, so dismissing one of its inputs, run without debugging, is still logged.
 
 **What would fix it.** Quiet start failures that the DAP layer does not log, or a public hook to
 resolve a run's configuration before the run starts, that can cancel it.
+
+### A split-mode backend cannot open a native file type (worked around)
+
+**What VS Code offers.** A custom editor for any file name, PDFs and office documents included,
+which opens the file like any other.
+
+**What the platform offers.** Navigation hands a file whose type is an `INativeFileType` to the
+system's associated application before any editor is asked. A split-mode backend has no desktop to
+hand it to: `IdeDesktopPeer` logs "open ignored", and the file does not open at all, so the client
+never hears of it to show it in its custom editor.
+
+**What CodeBridge does.** A `FileTypeOverrider` (`CustomEditorFileTypeOverrider`) gives a file of a
+native type that a custom editor opens by default a binary type that is not native, and a backend
+placeholder editor (`CustomEditorPlaceholderProvider`) opens it, which the client replaces with the
+custom editor. `FileTypeOverrider` is in an `impl` package.
+
+**What would fix it.** A public way for a plugin to claim a native file type for an editor, or a
+split-mode backend that asks the client to open native files instead of dropping them.

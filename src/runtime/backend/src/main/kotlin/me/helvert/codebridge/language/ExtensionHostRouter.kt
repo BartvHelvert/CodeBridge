@@ -316,6 +316,11 @@ internal class ExtensionHostRouter(
                 $$"$registerWebviewViewProvider" to listOf(In.Remember("webviewView", p(1))),
                 $$"$unregisterWebviewViewProvider" to listOf(In.Forget("webviewView", p(0))),
             ),
+            "MainThreadCustomEditors" to mapOf(
+                $$"$registerTextEditorProvider" to listOf(In.Remember("customEditor", p(1))),
+                $$"$registerCustomEditorProvider" to listOf(In.Remember("customEditor", p(1))),
+                $$"$unregisterEditorProvider" to listOf(In.Forget("customEditor", p(0))),
+            ),
             "MainThreadAuthentication" to mapOf(
                 $$"$registerAuthenticationProvider" to listOf(In.Remember("authProvider", p(0, "id"))),
                 $$"$unregisterAuthenticationProvider" to listOf(In.Forget("authProvider", p(0))),
@@ -384,6 +389,12 @@ internal class ExtensionHostRouter(
                 $$"$resolveWebviewView" to Out.Key("webviewView", p(1), learn = "webview" to p(0)),
                 $$"$onDidChangeWebviewViewVisibility" to Out.Key("webview", p(0)),
                 $$"$disposeWebviewView" to Out.Key("webview", p(0)),
+            ),
+            // A custom editor's documents and pages are its provider's host's, named by view type.
+            "ExtHostCustomEditors" to mapOf(
+                ANY to Out.Key("customEditor", p(1)),
+                $$"$resolveCustomEditor" to Out.Key("customEditor", p(2), learn = "webview" to p(1)),
+                $$"$onMoveCustomEditor" to Out.Key("customEditor", p(2)),
             ),
             "ExtHostAuthentication" to mapOf(
                 ANY to Out.Key("authProvider", p(0)),

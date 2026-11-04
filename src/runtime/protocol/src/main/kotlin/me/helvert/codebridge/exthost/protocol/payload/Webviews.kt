@@ -250,7 +250,7 @@ object Webviews {
 
     fun visibility(handle: String, visible: Boolean): String = buildJsonArray { add(handle); add(visible) }.toString()
 
-    private fun extension(json: JsonObject?): Extension {
+    internal fun extension(json: JsonObject?): Extension {
         val id = when (val value = json?.get("id")) {
             is JsonPrimitive -> value.contentOrNull
             // An `ExtensionIdentifier` crosses as `{value, _lower}`.

@@ -106,6 +106,22 @@ class ExtensionHostRouterTest {
     }
 
     @Test
+    fun `a custom editor's documents and pages are its provider's host's`() = runBlocking {
+        from(worker, "MainThreadCustomEditors", $$"$registerCustomEditorProvider", """[{"id":"acme.web"},"web.draw",{},{},false,false]""")
+        val file = """{"scheme":"file","path":"/a.draw"}"""
+        router.call("ExtHostCustomEditors", $$"$createCustomDocument", """[$file,"web.draw",null,null]""")
+        router.call("ExtHostCustomEditors", $$"$resolveCustomEditor", """[$file,"handle-1","web.draw",{},0]""")
+        router.call("ExtHostWebviews", $$"$onMessage", """["handle-1","{}",[]]""")
+        router.call("ExtHostCustomEditors", $$"$onSave", """[$file,"web.draw"]""")
+        assertEquals(4, worker.calls.size)
+        assertEquals(0, node.calls.size)
+
+        from(worker, "MainThreadCustomEditors", $$"$unregisterEditorProvider", """["web.draw"]""")
+        router.call("ExtHostCustomEditors", $$"$createCustomDocument", """[$file,"web.draw",null,null]""")
+        assertEquals(1, node.calls.size)
+    }
+
+    @Test
     fun `an activation goes to the extension's host`() = runBlocking {
         router.call("ExtHostExtensionService", $$"$activate", """[{"value":"Acme.Web","_lower":"acme.web"},{}]""")
         router.call("ExtHostExtensionService", $$"$activate", """[{"value":"acme.node","_lower":"acme.node"},{}]""")

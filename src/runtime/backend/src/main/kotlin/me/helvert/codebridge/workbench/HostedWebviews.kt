@@ -27,8 +27,10 @@ import me.helvert.codebridge.rpc.WebviewResolutionDto
 import me.helvert.codebridge.rpc.WebviewResourceDto
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.BasicFileAttributes
 import java.util.*
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 import kotlin.time.Duration.Companion.milliseconds
 
 /**
@@ -48,6 +50,9 @@ import kotlin.time.Duration.Companion.milliseconds
  * saved in the workspace file -- it stays as a dormant tab, and once that tab is on screen its
  * extension is woken (`onWebviewPanel:`) and asked to fill it again (`$deserializeWebviewPanel`),
  * with the state its page last saved. Panels without a serializer go with their host, as in VS Code.
+ *
+ * A custom editor's page is a webview too, made here for [HostedCustomEditors] before its extension
+ * is asked to fill it, and drawn by the editor of its file rather than a tab of its own.
  */
 @Service(Service.Level.PROJECT)
 @State(name = "CodeBridgeWebviews", storages = [Storage(StoragePathMacros.WORKSPACE_FILE)])
@@ -311,7 +316,10 @@ class HostedWebviews(private val project: Project, private val scope: CoroutineS
     fun shown(handle: String, visible: Boolean, active: Boolean, position: Int = 0) {
         val webview = webviews.value[handle] ?: return
         if (visible) onScreen.add(handle) else onScreen.remove(handle)
-        if (webview.kind == WebviewDto.PANEL) {
+        // A custom editor's page is a panel to its extension.
+        if (webview.kind == WebviewDto.CUSTOM_EDITOR) {
+            notifyHost(Webviews.HOST_PANELS, Webviews.ON_PANEL_VIEW_STATES, Webviews.panelViewState(handle, active, visible, position))
+        } else if (webview.kind == WebviewDto.PANEL) {
             placements[handle] = active to position
             if (webview.dormant) {
                 if (visible) restore(handle)
@@ -376,6 +384,27 @@ class HostedWebviews(private val project: Project, private val scope: CoroutineS
         if (!webview.dormant) notifyHost(Webviews.HOST_PANELS, Webviews.ON_PANEL_DISPOSED, Webviews.handleArgs(handle))
     }
 
+    /**
+     * Makes webview [handle] for a custom editor of [viewType], for its extension to fill in
+     * `$resolveCustomEditor`, which then knows it as a panel.
+     */
+    internal fun customEditorCreated(
+        handle: String, viewType: String, extension: Webviews.Extension, title: String, panelOptions: JsonObject, binaryMessages: Boolean,
+    ) {
+        webviews.update {
+            it + (handle to Webview(
+                handle, WebviewDto.CUSTOM_EDITOR, viewType, extension, title, panelOptions = panelOptions, binaryMessages = binaryMessages,
+            ))
+        }
+    }
+
+    /** The custom editor drawn by webview [handle] closed: the webview goes, and its extension hears `onDidDispose`. */
+    internal fun customEditorClosed(handle: String) {
+        if (webviews.value[handle]?.kind != WebviewDto.CUSTOM_EDITOR) return
+        forget(handle)
+        notifyHost(Webviews.HOST_PANELS, Webviews.ON_PANEL_DISPOSED, Webviews.handleArgs(handle))
+    }
+
     private fun forget(handle: String) {
         webviews.update { it - handle }
         states.remove(handle)
@@ -386,11 +415,11 @@ class HostedWebviews(private val project: Project, private val scope: CoroutineS
     /**
      * The file behind [url], an `asWebviewUri` address, if it lies under one of the webview's
      * `localResourceRoots`. Both sides are resolved to real paths first, so neither `..` nor a link
-     * leads a page out of what its extension allowed.
+     * leads a page out of what its extension allowed. Without its bytes when it is still at [cachedVersion].
      */
-    fun resource(handle: String, url: String): WebviewResourceDto? {
+    fun resource(handle: String, url: String, cachedVersion: String? = null): WebviewResourceDto? {
         val webview = webviews.value[handle] ?: return null
-        return read(url, webview.options.localResourceRoots ?: defaultRoots(webview))
+        return read(url, webview.options.localResourceRoots ?: defaultRoots(webview), cachedVersion)
     }
 
     /** What the host allows when the extension names no roots: the workspace and the extension's own directory. */
@@ -564,16 +593,22 @@ class HostedWebviews(private val project: Project, private val scope: CoroutineS
             "mp4" to "video/mp4", "webm" to "video/webm", "mp3" to "audio/mpeg", "wav" to "audio/wav", "ogg" to "audio/ogg",
         )
 
-        /** The file behind [url] if it lies under one of [roots]; see [resource]. */
-        internal fun read(url: String, roots: List<UriComponents>): WebviewResourceDto? {
+        /**
+         * The file behind [url] if it lies under one of [roots]; see [resource]. Its version is its
+         * size and the time it last changed, which a file written again does not keep.
+         */
+        internal fun read(url: String, roots: List<UriComponents>, cachedVersion: String? = null): WebviewResourceDto? {
             val resource = Webviews.resource(url)?.takeIf { it.scheme == UriComponents.FILE } ?: return null
             val file = runCatching { resource.copy(query = "", fragment = "").toPath().toRealPath() }.getOrNull() ?: return null
             val real = roots.mapNotNull { root ->
                 root.takeIf { it.scheme == UriComponents.FILE }?.let { runCatching { it.toPath().toRealPath() }.getOrNull() }
             }
             if (real.none(file::startsWith)) return null
-            if (!Files.isRegularFile(file) || Files.size(file) > MAX_RESOURCE_BYTES) return null
-            return WebviewResourceDto(Files.readAllBytes(file), mimeType(file))
+            val attributes = runCatching { Files.readAttributes(file, BasicFileAttributes::class.java) }.getOrNull() ?: return null
+            if (!attributes.isRegularFile || attributes.size() > MAX_RESOURCE_BYTES) return null
+            val version = "${attributes.size()}:${attributes.lastModifiedTime().to(TimeUnit.NANOSECONDS)}"
+            if (version == cachedVersion) return WebviewResourceDto(null, mimeType(file), version)
+            return WebviewResourceDto(Files.readAllBytes(file), mimeType(file), version)
         }
 
         internal fun mimeType(file: Path): String =

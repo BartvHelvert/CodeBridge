@@ -144,4 +144,26 @@
             send('f');
         }
     });
+
+    function editable(element) {
+        return !!element && (element.isContentEditable || element.tagName === 'INPUT' || element.tagName === 'TEXTAREA');
+    }
+
+    // Save, undo and redo are the workbench's, as VS Code's webview host hands them on: a custom
+    // editor saves, undoes and redoes its document. Undo and redo only once the page has had them,
+    // and not in a field of its own, which undoes its own typing.
+    document.addEventListener('keydown', function (event) {
+        if (event.altKey || !(event.ctrlKey || event.metaKey)) return;
+        const key = event.key.toLowerCase();
+        if (key === 's' && !event.shiftKey) {
+            event.preventDefault();
+            send('ksave');
+            return;
+        }
+        const command = key === 'z' ? (event.shiftKey ? 'redo' : 'undo') : (key === 'y' && !event.shiftKey ? 'redo' : null);
+        if (!command || editable(event.target)) return;
+        setTimeout(function () {
+            if (!event.defaultPrevented) send('k' + command);
+        }, 0);
+    });
 })();

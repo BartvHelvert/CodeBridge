@@ -135,15 +135,35 @@ internal class HostedDocuments(
             // Null for content IntelliJ will not load as text, which is what VS Code refuses too.
             ?: throw cannotOpen(resource, "the file seems to be binary")
         request.encoding?.let { reopenIn(file, document, resource, it) }
+        val uri = mirror(file, document, HostedLanguageFeatures.HOLDER)
+        hold(file, document)
+        LOG.info("Opened ${file.name} in the extension host for an extension")
+        return answer(uri)
+    }
+
+    /** Puts [file] into the host under [holder], as the language an extension contributes for it, and wakes that language's extensions. */
+    private fun mirror(file: VirtualFile, document: Document, holder: String): String {
         val snapshot = snapshot(document)
         // What VS Code calls a file no extension claims, and with no extension waiting for it.
         val language = features.languageOf(file) ?: languageOf(file) ?: PLAIN_TEXT
-        val uri = features.documentHeld(file, language, snapshot)
-        hold(file, document)
-        LOG.info("Opened ${file.name} in the extension host for an extension, as '$language'")
+        val uri = features.documentHeld(file, language, snapshot, holder = holder)
         if (language != PLAIN_TEXT) activate(language)
-        return answer(uri)
+        return uri
     }
+
+    /**
+     * Puts [file] into the host for [holder] -- a custom editor showing it, whose provider edits the
+     * host's copy -- until [releaseFor]; no idle release, unlike an extension's own hold. Null for a
+     * file IntelliJ will not load as text.
+     */
+    suspend fun holdFor(holder: String, file: VirtualFile): UriComponents? = withContext(worker) {
+        val document = ReadAction.computeBlocking<Document?, RuntimeException> { FileDocumentManager.getInstance().getDocument(file) }
+            ?: return@withContext null
+        UriComponents.of(mirror(file, document, holder))
+    }
+
+    /** Lets go of what [holdFor] held for [holder]; the host keeps the file while anyone else has it. */
+    suspend fun releaseFor(holder: String, file: VirtualFile): Unit = withContext(worker) { features.documentReleased(file, holder) }
 
     /**
      * Decodes [file] in the encoding an extension asked for, as `openTextDocument(uri, { encoding })`

@@ -16,7 +16,23 @@
         <postStartupActivity implementation="me.helvert.codebridge.webview.CodeBridgeWebviewsActivity"/>
         <!-- Web worker extension hosts, each in a browser page that is never shown. -->
         <postStartupActivity implementation="me.helvert.codebridge.webview.CodeBridgeWorkerHostsActivity"/>
+        <!-- Extensions' custom editors, for the files their `contributes.customEditors` claim. -->
+        <fileEditorProvider implementation="me.helvert.codebridge.webview.CustomEditorProvider"/>
+        <fileIconProvider implementation="me.helvert.codebridge.webview.CustomEditorIcons"/>
+        <editorFactoryListener implementation="me.helvert.codebridge.webview.CustomEditorTextHider"/>
+        <postStartupActivity implementation="me.helvert.codebridge.webview.CodeBridgeCustomEditorsActivity"/>
     </extensions>
+    <actions>
+        <!-- Open With: the editors that can open the file, its custom editors and the text editor. -->
+        <group id="CodeBridge.OpenWithCustomEditor" class="me.helvert.codebridge.webview.OpenWithCustomEditorGroup">
+            <add-to-group group-id="EditorTabPopupMenu" anchor="last"/>
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="after" relative-to-action="WeighingNewGroup"/>
+        </group>
+        <!-- Beside the editor tabs: the editor the selected tab shows its file in, to switch or make default. -->
+        <group id="CodeBridge.CustomEditorSwitcher" class="me.helvert.codebridge.webview.CustomEditorSwitcher">
+            <add-to-group group-id="EditorTabsToolbarActions" anchor="first"/>
+        </group>
+    </actions>
     <extensions defaultExtensionNs="me.helvert.codebridge">
         <!-- Webview views, in the tool windows the frontend makes for view containers. -->
         <webviewViewFactory implementation="me.helvert.codebridge.webview.CodeBridgeWebviewViews"/>

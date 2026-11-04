@@ -252,8 +252,9 @@ interface CodeBridgeApi : RemoteApi<Unit> {
     /**
      * What page [handle] asked for at [url], an `asWebviewUri` address; null when it names nothing
      * the webview's `localResourceRoots` allow, so a page can only read what its extension let it.
+     * Without its bytes when the file is still at [cachedVersion], the version the caller has a copy of.
      */
-    suspend fun webviewResource(projectId: ProjectId, handle: String, url: String): WebviewResourceDto?
+    suspend fun webviewResource(projectId: ProjectId, handle: String, url: String, cachedVersion: String?): WebviewResourceDto?
 
     /**
      * Whether webview [handle] is on screen, and for a panel whether it is the editor in front and
@@ -296,6 +297,51 @@ interface CodeBridgeApi : RemoteApi<Unit> {
      * messages, or a file of one of its extensions. Null for anything else.
      */
     suspend fun workerHostResource(projectId: ProjectId, id: String, path: String): WebviewResourceDto?
+
+    /**
+     * The custom editors enabled extensions contribute (`contributes.customEditors`), and the
+     * user's choices among them (`workbench.editorAssociations`), which together decide the files
+     * that open in one; each emission replaces the last.
+     */
+    suspend fun customEditorTypes(projectId: ProjectId): Flow<CustomEditorSetupDto>
+
+    /**
+     * Makes [viewType] -- or the text editor, for [CustomEditorTypes.TEXT] -- what files matching
+     * [pattern] open in, in the user's settings, as VS Code's *Set Default* does. Null once written;
+     * otherwise why it could not be.
+     */
+    suspend fun setDefaultEditor(projectId: ProjectId, pattern: String, viewType: String): String?
+
+    /**
+     * Opens [file] in custom editor [viewType], as editor [editorId] in editor group [position]: its
+     * extension woken, the document made, and a webview filled for it, whose page then comes
+     * through [webviews] as any other. Each emission replaces the last; the editor is open for as
+     * long as the flow is collected, and letting it go closes it -- saving its changes first, when
+     * it is the document's last editor.
+     */
+    suspend fun openCustomEditor(projectId: ProjectId, file: VirtualFileId, viewType: String, editorId: String, position: Int): Flow<CustomEditorDto>
+
+    /**
+     * The backend's icon for [file], as the project view draws it, or null if it has none to give:
+     * for a custom editor's tab, which the frontend cannot draw itself when the file's type -- an
+     * extension's language -- exists on the backend only.
+     */
+    suspend fun fileIcon(projectId: ProjectId, file: VirtualFileId): IconId?
+
+    /**
+     * The backend's file at [path], or null if it has none there: for a file the frontend knows only
+     * by its path, as a split-mode client's Project view names its files, which cannot be sent as one.
+     */
+    suspend fun fileAt(path: String): VirtualFileId?
+
+    /** Saves the document custom editor [editorId] shows. */
+    suspend fun saveCustomEditor(projectId: ProjectId, editorId: String)
+
+    /** Takes back the last edit of the document custom editor [editorId] shows, if its extension can. */
+    suspend fun undoCustomEditor(projectId: ProjectId, editorId: String)
+
+    /** Makes again the edit [undoCustomEditor] last took back. */
+    suspend fun redoCustomEditor(projectId: ProjectId, editorId: String)
 
     /**
      * What the project's extensions do on the user's machine -- open a link in the browser, read or
@@ -821,6 +867,9 @@ data class WebviewDto(
         const val PANEL: String = "panel"
         const val VIEW: String = "view"
 
+        /** The page of a custom editor, drawn by the editor of its file rather than a tab of its own. */
+        const val CUSTOM_EDITOR: String = "customEditor"
+
         /** The editor group in front. */
         const val ACTIVE_GROUP: Int = -1
 
@@ -839,7 +888,7 @@ data class WebviewEventDto(
     val kind: String,
     val handle: String,
     val json: String = "",
-    val buffers: List<ByteArray> = emptyList(),
+    val buffers: List<Base64Bytes> = emptyList(),
     val preserveFocus: Boolean = false,
     val column: Int = WebviewDto.ACTIVE_GROUP,
 ) {
@@ -849,17 +898,61 @@ data class WebviewEventDto(
     }
 }
 
+/**
+ * A custom editor an extension contributes: the files it claims, by `filenamePattern`, and whether
+ * it opens them [byDefault] (`"priority": "default"`) or only when the user asks for it (`"option"`).
+ */
+@Serializable
+data class CustomEditorTypeDto(
+    val viewType: String,
+    val displayName: String,
+    val extensionId: String,
+    val patterns: List<String>,
+    val byDefault: Boolean,
+)
+
+/**
+ * The project's custom editors, and the user's `workbench.editorAssociations`: for a file name
+ * pattern, the custom editor that opens matching files, or [CustomEditorTypes.TEXT] for none.
+ */
+@Serializable
+data class CustomEditorSetupDto(
+    val types: List<CustomEditorTypeDto> = emptyList(),
+    val associations: Map<String, String> = emptyMap(),
+)
+
+/**
+ * What one custom editor shows: once its extension filled it, the [handle] of the webview drawing it
+ * -- a [WebviewDto] of kind [WebviewDto.CUSTOM_EDITOR] -- and until then [message], what it waits
+ * for or why it could not open.
+ * [editable] unless the extension only shows the file; the document is then [dirty] while it has
+ * unsaved changes, and has edits to take back ([canUndo]) or make again ([canRedo]). For a text
+ * editor provider the document is the file's text, its edits the extension's changes to it.
+ */
+@Serializable
+data class CustomEditorDto(
+    val handle: String? = null,
+    val message: String? = null,
+    val editable: Boolean = false,
+    val dirty: Boolean = false,
+    val canUndo: Boolean = false,
+    val canRedo: Boolean = false,
+)
+
 /** A [CodeBridgeApi.resolveWebviewView] answer: the webview's handle, or why there is none. */
 @Serializable
 data class WebviewResolutionDto(val handle: String? = null, val problem: String? = null)
 
-/** A file a page asked for, and its media type. */
+/**
+ * A file a page asked for, its media type, and the [version] of it these are: its [bytes], or none
+ * when the asker's copy is of this version.
+ */
 @Serializable
-data class WebviewResourceDto(val bytes: ByteArray, val mimeType: String) {
+data class WebviewResourceDto(val bytes: Base64Bytes?, val mimeType: String, val version: String) {
     override fun equals(other: Any?): Boolean =
-        other is WebviewResourceDto && bytes.contentEquals(other.bytes) && mimeType == other.mimeType
+        other is WebviewResourceDto && bytes.contentEquals(other.bytes) && mimeType == other.mimeType && version == other.version
 
-    override fun hashCode(): Int = 31 * bytes.contentHashCode() + mimeType.hashCode()
+    override fun hashCode(): Int = 31 * (31 * bytes.contentHashCode() + mimeType.hashCode()) + version.hashCode()
 }
 
 /**
@@ -874,7 +967,7 @@ data class ContributedIconsDto(
 
 /** An icon font as the extension ships it, and the code point of each icon id it draws. */
 @Serializable
-data class IconFontDto(val font: ByteArray, val glyphs: Map<String, Int>) {
+data class IconFontDto(val font: Base64Bytes, val glyphs: Map<String, Int>) {
     override fun equals(other: Any?): Boolean =
         other is IconFontDto && font.contentEquals(other.font) && glyphs == other.glyphs
 

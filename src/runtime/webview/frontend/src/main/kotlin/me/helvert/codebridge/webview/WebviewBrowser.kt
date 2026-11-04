@@ -54,7 +54,18 @@ internal class WebviewBrowser(
     private val scope = CoroutineScope(parentScope.coroutineContext + SupervisorJob(parentScope.coroutineContext[Job]))
     private val browser: JBCefBrowser = JBCefBrowser.createBuilder().setEnableOpenDevToolsMenuItem(true).build()
     private val query: JBCefJSQuery = JBCefJSQuery.create(browser as JBCefBrowserBase)
-    private val pageHost = "$handle.vscode-webview.vscode-cdn.net"
+    /**
+     * The origin the page is served at: its view type's, from the first [show] on, where the service
+     * worker that keeps its files is; see [WebviewOrigins].
+     */
+    @Volatile private var pageHost = "$handle.vscode-webview.vscode-cdn.net"
+
+    /** This page, as its origin's service worker reaches it. */
+    private val origin = object : WebviewOrigins.Page {
+        override val project: Project get() = this@WebviewBrowser.project
+        override val handle: String get() = this@WebviewBrowser.handle
+        override val document: String get() = this@WebviewBrowser.document
+    }
 
     /**
      * Where the page now on screen was loaded from: a new address for each load, as VS Code gives its
@@ -70,6 +81,9 @@ internal class WebviewBrowser(
 
     /** Told when the page asks to search it, with Ctrl/Cmd+F; see [find]. */
     var findRequested: () -> Unit = {}
+
+    /** Told when the page is given the workbench's save, undo or redo keys: [SAVE], [UNDO] or [REDO]. */
+    var keyCommand: (String) -> Unit = {}
 
     /** What the page on screen was made from; null before the first [show]. */
     private var page: WebviewDto? = null
@@ -119,7 +133,11 @@ internal class WebviewBrowser(
     fun show(webview: WebviewDto) {
         val previous = page
         page = webview
-        if (previous == null) theme = WebviewTheme.current(inPanel, webview.themeColors)
+        if (previous == null) {
+            theme = WebviewTheme.current(inPanel, webview.themeColors)
+            pageHost = WebviewOrigins.host(webview.extensionId, webview.viewType)
+            WebviewOrigins.getInstance().attach(pageHost, origin)
+        }
         else if (previous.themeColors != webview.themeColors) themeChanged()
         if (previous != null && previous.html == webview.html && previous.htmlVersion == webview.htmlVersion &&
             previous.scripts == webview.scripts &&
@@ -141,7 +159,7 @@ internal class WebviewBrowser(
         if (state == null) state = webview.restoredState
         val bootstrap = WebviewPage.bootstrap(query.inject("payload"), state, theme, webview.binaryMessages, load)
         document = WebviewPage.document(webview.html, webview.scripts, bootstrap, theme)
-        address = "https://$pageHost/index.html?id=$load"
+        address = "https://$pageHost/index.html?id=$load&handle=$handle"
         browser.loadURL(address)
     }
 
@@ -170,6 +188,7 @@ internal class WebviewBrowser(
                 call { webviewState(project.projectId(), handle, body) }
             }
             'f' -> scope.launch(Dispatchers.EDT) { findRequested() }
+            'k' -> if (body in KEY_COMMANDS) scope.launch(Dispatchers.EDT) { keyCommand(body) }
             // Ready, with the number of the load it is.
             'r' -> body.toIntOrNull()
                 ?.let { its -> scope.launch(Dispatchers.EDT) { outbox.ready(its) } }
@@ -232,6 +251,7 @@ internal class WebviewBrowser(
     private fun call(work: suspend CodeBridgeApi.() -> Unit) = calls.call(work)
 
     override fun dispose() {
+        WebviewOrigins.getInstance().detach(origin)
         scope.cancel()
     }
 
@@ -244,9 +264,17 @@ internal class WebviewBrowser(
             val url = request.url ?: return null
             val host = host(url) ?: return null
             return when {
-                host == pageHost -> served(scope, "webview $handle") { Loaded(document.toByteArray(Charsets.UTF_8), "text/html") }
+                // Asked for by the browser itself only until the origin's service worker took over,
+                // which then asks with `sw` set; see [WebviewOrigins]. Told it has none, the page is
+                // served as it is.
+                host == pageHost -> served(scope, "webview $handle") {
+                    if ("sw=" in url) Loaded(document.toByteArray(Charsets.UTF_8), "text/html")
+                    else Loaded(WebviewOrigins.STARTER, "text/html")
+                }
                 host.endsWith(RESOURCES) -> served(scope, "webview $handle") {
-                    CodeBridgeApi.getInstance().webviewResource(project.projectId(), handle, url)?.let { Loaded(it.bytes, it.mimeType) }
+                    resources.read(url) { cachedVersion ->
+                        CodeBridgeApi.getInstance().webviewResource(project.projectId(), handle, url, cachedVersion)
+                    }?.let { Loaded(it.bytes, it.mimeType) }
                 }
                 else -> null
             }
@@ -266,6 +294,14 @@ internal class WebviewBrowser(
         private val LOG = Logger.getInstance(WebviewBrowser::class.java)
         private const val CDN = ".vscode-cdn.net"
         private const val RESOURCES = ".vscode-resource$CDN"
+
+        /** What every page read, shared: the same extension's pages read the same files. */
+        private val resources = WebviewResources(capacity = 64L * 1024 * 1024)
+
+        const val SAVE: String = "save"
+        const val UNDO: String = "undo"
+        const val REDO: String = "redo"
+        private val KEY_COMMANDS = setOf(SAVE, UNDO, REDO)
 
         /**
          * [url]'s host as written. Not [URI.getHost]: a resource's host is usually `file%2B...`, its

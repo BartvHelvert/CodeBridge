@@ -137,6 +137,20 @@
             "scope": "resource"
           }
         }
+      },
+      {
+        "id": "workbench",
+        "title": "Workbench",
+        "properties": {
+          "workbench.editorAssociations": {
+            "type": "object",
+            "markdownDescription": "Configure [glob patterns](https://code.visualstudio.com/docs/editor/codebasics#_advanced-search-options) to editors: the custom editor whose view type is given opens the files a pattern matches, or the text editor for `default`. A pattern with no `/` matches the file name, any other the whole path.",
+            "default": {},
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        }
       }
     ]
   }

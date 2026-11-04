@@ -1,7 +1,12 @@
 package me.helvert.codebridge.rpc
 
 import com.intellij.codeWithMe.ClientId
+import com.intellij.ide.ui.icons.IconId
+import com.intellij.ide.ui.icons.rpcIdOrNull
+import com.intellij.ide.vfs.VirtualFileId
 import com.intellij.ide.vfs.rpcId
+import com.intellij.ide.vfs.virtualFile
+import com.intellij.openapi.application.readAction
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -9,7 +14,9 @@ import com.intellij.platform.project.ProjectId
 import com.intellij.platform.project.findProjectOrNull
 import com.intellij.platform.project.projectId
 import com.intellij.platform.rpc.backend.RemoteApiProvider
+import com.intellij.util.IconUtil
 import fleet.rpc.remoteApiDescriptor
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.*
@@ -293,9 +300,9 @@ internal class BackendCodeBridgeApi : CodeBridgeApi {
         HostedWebviews.getInstance(project).saveState(handle, state)
     }
 
-    override suspend fun webviewResource(projectId: ProjectId, handle: String, url: String): WebviewResourceDto? =
+    override suspend fun webviewResource(projectId: ProjectId, handle: String, url: String, cachedVersion: String?): WebviewResourceDto? =
         withContext(Dispatchers.IO) {
-            projectId.findProjectOrNull()?.let { HostedWebviews.getInstance(it).resource(handle, url) }
+            projectId.findProjectOrNull()?.let { HostedWebviews.getInstance(it).resource(handle, url, cachedVersion) }
         }
 
     override suspend fun workerHosts(projectId: ProjectId): Flow<List<String>> {
@@ -342,6 +349,54 @@ internal class BackendCodeBridgeApi : CodeBridgeApi {
     override suspend fun runWebviewLink(projectId: ProjectId, handle: String, uri: String) {
         val project = projectId.findProjectOrNull() ?: return
         HostedWebviews.getInstance(project).runLink(handle, uri)
+    }
+
+    override suspend fun customEditorTypes(projectId: ProjectId): Flow<CustomEditorSetupDto> {
+        val project = projectId.findProjectOrNull() ?: return flowOf(CustomEditorSetupDto())
+        return CustomEditorDefaults.getInstance(project).changes()
+    }
+
+    override suspend fun setDefaultEditor(projectId: ProjectId, pattern: String, viewType: String): String? {
+        val project = projectId.findProjectOrNull() ?: return "The project is closed."
+        return CustomEditorDefaults.getInstance(project).setDefault(pattern, viewType)
+    }
+
+    override suspend fun openCustomEditor(
+        projectId: ProjectId, file: VirtualFileId, viewType: String, editorId: String, position: Int,
+    ): Flow<CustomEditorDto> {
+        val project = projectId.findProjectOrNull() ?: return emptyFlow<CustomEditorDto>().also { LOG.info("No project for the $viewType editor") }
+        val virtualFile = file.virtualFile()
+            ?: return flowOf(CustomEditorDto(message = "The file is not on the backend.")).also { LOG.info("No backend file for the $viewType editor: $file") }
+        return HostedCustomEditors.getInstance(project).open(virtualFile, viewType, editorId, position)
+    }
+
+    override suspend fun fileIcon(projectId: ProjectId, file: VirtualFileId): IconId? {
+        val project = projectId.findProjectOrNull() ?: return null
+        val virtualFile = file.virtualFile() ?: return null
+        return try {
+            readAction { IconUtil.computeFileIcon(virtualFile, 0, project) }.rpcIdOrNull()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            LOG.debug("No icon for ${virtualFile.name}", failure)
+            null
+        }
+    }
+
+    override suspend fun fileAt(path: String): VirtualFileId? = withContext(Dispatchers.IO) {
+        LocalFileSystem.getInstance().findFileByPath(path)?.rpcId()
+    }
+
+    override suspend fun saveCustomEditor(projectId: ProjectId, editorId: String) {
+        projectId.findProjectOrNull()?.let { HostedCustomEditors.getInstance(it).save(editorId) }
+    }
+
+    override suspend fun undoCustomEditor(projectId: ProjectId, editorId: String) {
+        projectId.findProjectOrNull()?.let { HostedCustomEditors.getInstance(it).undo(editorId) }
+    }
+
+    override suspend fun redoCustomEditor(projectId: ProjectId, editorId: String) {
+        projectId.findProjectOrNull()?.let { HostedCustomEditors.getInstance(it).redo(editorId) }
     }
 
     companion object {

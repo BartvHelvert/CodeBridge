@@ -253,6 +253,10 @@ class ExtensionHostDocuments(
     fun isOpen(owner: String, uri: String): Boolean =
         documents[key(uri)]?.owners?.contains(owner) == true
 
+    /** Who mirrors [uri], none when the host holds no copy. */
+    @Synchronized
+    fun ownersOf(uri: String): Set<String> = documents[key(uri)]?.owners?.toSet().orEmpty()
+
     /** Whether [owner] has [uri] open in an editor, rather than only holding it. */
     @Synchronized
     fun isShown(owner: String, uri: String): Boolean =

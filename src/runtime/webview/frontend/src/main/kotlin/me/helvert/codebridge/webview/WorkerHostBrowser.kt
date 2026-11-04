@@ -5,8 +5,10 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.platform.project.projectId
+import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.ui.jcef.JBCefBrowserBase
+import com.intellij.ui.jcef.JBCefClient
 import com.intellij.ui.jcef.JBCefJSQuery
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
@@ -33,7 +35,14 @@ import java.util.*
  * host sends, each in the order it came. See `worker-host.html` for the page's half.
  */
 internal class WorkerHostBrowser(private val project: Project, private val id: String) : Disposable {
+    /**
+     * The browser's own client, with room for [query] made before the browser is: being never shown,
+     * the browser is made at once, and a query made after that might never reach its page.
+     */
+    private val client: JBCefClient = JBCefApp.getInstance().createClient()
+        .apply { setProperty(JBCefClient.Properties.JS_QUERY_POOL_SIZE, 1) }
     private val browser: JBCefBrowser = JBCefBrowser.createBuilder()
+        .setClient(client)
         // Never shown, so drawn off screen, made without a window to show it in, and drawn as seldom as it can be.
         .setOffScreenRendering(true)
         .setCreateImmediately(true)
@@ -51,7 +60,8 @@ internal class WorkerHostBrowser(private val project: Project, private val id: S
     private val stopped = CompletableDeferred<String>()
 
     init {
-        Disposer.register(this, browser)
+        // The browser goes with its client.
+        Disposer.register(this, client)
         Disposer.register(this, query)
         query.addHandler { request ->
             fromPage(request)
@@ -132,7 +142,7 @@ internal class WorkerHostBrowser(private val project: Project, private val id: S
             val path = uri.path.orEmpty()
             return served(scope, "the web worker extension host") {
                 if (path == WorkerHostPage.INDEX) Loaded(PAGE.replace("/*SEND*/", query.inject("payload")).toByteArray(), "text/html")
-                else CodeBridgeApi.getInstance().workerHostResource(project.projectId(), id, path)?.let { Loaded(it.bytes, it.mimeType) }
+                else CodeBridgeApi.getInstance().workerHostResource(project.projectId(), id, path)?.let { found -> found.bytes?.let { Loaded(it, found.mimeType) } }
             }
         }
     }
