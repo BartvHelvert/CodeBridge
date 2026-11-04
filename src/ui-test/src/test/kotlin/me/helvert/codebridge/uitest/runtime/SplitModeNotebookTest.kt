@@ -1,6 +1,7 @@
 package me.helvert.codebridge.uitest.runtime
 
 import com.intellij.driver.client.Remote
+import com.intellij.driver.model.OnDispatcher
 import com.intellij.driver.sdk.ui.components.UiComponent
 import com.intellij.driver.sdk.ui.components.common.JEditorUiComponent
 import com.intellij.driver.sdk.ui.components.common.editor.completionList
@@ -462,17 +463,23 @@ class SplitModeNotebookTest {
                 awaitProbeValue("'$item' in the cell's menu", { runCatching { menu.rawItems }.getOrDefault(emptyList()) }) { items ->
                     items.any { it.startsWith(item) }
                 }
-                menu.clickItem(item, fullMatch = false)
+                driver.withContext(OnDispatcher.EDT) { menu.component.requestFocus() }
+                awaitProbeValue("the cell menu focused", { menu.isFocusOwner() }) { it }
+                menu.selectItem(item, fullMatch = false)
+                menu.keyboard { key(KeyEvent.VK_ENTER) }
+                awaitProbeValue("the cell menu closed", { menu.present() }) { !it }
             }
 
             awaitProbeValue("the notebook's cells in the client", ::cells) { it == listOf("one", "two") }
 
             // Copy Cell Down: a copy below, as one step that undo takes back.
-            fromMenu("Copy Cell Down")
-            awaitProbeValue("the copy below the cell", ::cells) { it == listOf("one", "one", "two") }
-            hostCells("""["one","one","two"]""")
-            frame.keyboard { hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_Z) }
-            awaitProbeValue("the copy undone", ::cells) { it == listOf("one", "two") }
+            repeat(3) {
+                fromMenu("Copy Cell Down")
+                awaitProbeValue("the copy below the cell", ::cells) { it == listOf("one", "one", "two") }
+                hostCells("""["one","one","two"]""")
+                frame.keyboard { hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_Z) }
+                awaitProbeValue("the copy undone", ::cells) { it == listOf("one", "two") }
+            }
 
             // Join With Next Cell: one cell, their texts a line apart.
             fromMenu("Join With Next Cell")
