@@ -97,6 +97,7 @@ tasks.test {
     // The plugin has to exist before it can be installed into an IDE.
     dependsOn(testSandbox, ":runtime:extractHostRuntime", ":buildLspFixture", ":bundled:prepareTestSandbox")
     dependsOn(":buildTextMateFixture", ":buildWorkbenchFixture", ":buildBundlingPluginFixture")
+    dependsOn(":buildActivationFailureFixture")
     systemProperty(
         "codebridge.bundling.plugin",
         rootProject.layout.buildDirectory.dir("fixtures/bundling-plugin").get().asFile.absolutePath
@@ -104,6 +105,10 @@ tasks.test {
     systemProperty(
         "codebridge.workbench.vsix",
         rootProject.layout.buildDirectory.file("fixtures/codebridge-workbench-probe.vsix").get().asFile.absolutePath
+    )
+    systemProperty(
+        "codebridge.failure.vsix",
+        rootProject.layout.buildDirectory.file("fixtures/codebridge-activation-failure-probe.vsix").get().asFile.absolutePath
     )
     systemProperty(
         "codebridge.textmate.vsix",

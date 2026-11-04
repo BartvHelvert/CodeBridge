@@ -17,6 +17,7 @@ the others. Read that before changing or deleting one.
 | [`exthost/lsp-socket-extension/`](exthost/lsp-socket-extension/README.md)   | `LanguageFeaturesIntegrationTest`                                                                                                                        | The same controlled server on a socket, so only the transport differs                                                                                          |
 | [`textmate-extension/`](textmate-extension/README.md)                       | `SplitModeTextMateTest`                                                                                                                                  | A grammar-only extension, for syntax colours forwarded to the client and their lifecycle                                                                       |
 | [`bundling-plugin/`](bundling-plugin/README.md) | `SplitModeBundledExtensionTest` | An IntelliJ plugin that is a VS Code extension and nothing else, as a vendor would publish one, wrapping `lsp-bundled-extension` |
+| [`activation-failure-extension/`](activation-failure-extension/README.md) | `SplitModeActivationFailureTest` | An extension whose `activate()` throws, for the runtime status on the Extensions page |
 
 CodeLLDB is redistributed under MIT. Its archive ships no licence file, so the required notice lives
 in [third-party notices](../../NOTICE.md); see its [fixture README](exthost/README-codelldb.md) before
@@ -171,6 +172,7 @@ exercises it:
 | Test                            | What the client does                                                                                                 |
 |---------------------------------|----------------------------------------------------------------------------------------------------------------------|
 | `SplitModeStorefrontTest`       | The VS Code Extensions page: enable, disable per workspace, uninstall and the gear menu, checked against the backend |
+| `SplitModeActivationFailureTest` | The VS Code Extensions page marks an extension that failed to activate and shows why in its details                |
 | `SplitModeActionsTest`          | Rename, Reformat Code and a quick fix from an extension, editing the client's document                               |
 | `SplitModeLanguageFeaturesTest` | Extend Selection, document links, linked editing, on-type formatting and colour swatches                             |
 | `SplitModeWorkbenchTest`        | Error Lens and GitLens decorations, painted in the client, and a diff against a file system provider                 |

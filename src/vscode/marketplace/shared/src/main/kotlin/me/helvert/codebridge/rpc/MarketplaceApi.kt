@@ -37,6 +37,12 @@ interface MarketplaceApi : RemoteApi<Unit> {
     suspend fun setDisabledInProject(projectId: ProjectId, id: String, disabled: Boolean)
     suspend fun uninstall(id: String): Flow<OperationUpdate>
 
+    /**
+     * Why each extension [projectId]'s extension host could not activate failed, by lower-case id:
+     * VS Code's runtime status. A new map each time that changes; empty for a project not open.
+     */
+    suspend fun activationFailures(projectId: ProjectId): Flow<Map<String, String>>
+
     companion object {
         suspend fun getInstance(): MarketplaceApi = RemoteApiProviderService.resolve(remoteApiDescriptor<MarketplaceApi>())
     }

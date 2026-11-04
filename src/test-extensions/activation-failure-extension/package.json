@@ -1,0 +1,23 @@
+{
+  "name": "activation-failure-probe",
+  "publisher": "codebridge",
+  "displayName": "CodeBridge Activation Failure Probe",
+  "version": "1.0.0",
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:codebridgefailing"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "codebridgefailing",
+        "extensions": [
+          ".codebridgefailing"
+        ]
+      }
+    ]
+  }
+}

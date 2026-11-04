@@ -4,6 +4,7 @@ import com.intellij.platform.rpc.backend.RemoteApiProvider
 import fleet.rpc.remoteApiDescriptor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.withContext
 import com.intellij.platform.project.ProjectId
 import com.intellij.platform.project.findProjectOrNull
@@ -12,6 +13,7 @@ import me.helvert.codebridge.extensions.InstalledExtension
 import me.helvert.codebridge.extensions.ProjectExtensions
 import me.helvert.codebridge.extensions.ExtensionInstallationService
 import me.helvert.codebridge.registry.OpenVsxRegistry
+import me.helvert.codebridge.workbench.HostedActivationFailures
 import java.nio.file.Files
 
 internal class MarketplaceRpcApiProvider : RemoteApiProvider {
@@ -90,6 +92,9 @@ internal class BackendMarketplaceApi : MarketplaceApi {
         installations.uninstall(id)
         null
     }
+
+    override suspend fun activationFailures(projectId: ProjectId): Flow<Map<String, String>> =
+        projectId.findProjectOrNull()?.let { HostedActivationFailures.getInstance(it).failures } ?: flowOf(emptyMap())
 
     private companion object {
         const val MAX_ICON_BYTES = 8 * 1024 * 1024

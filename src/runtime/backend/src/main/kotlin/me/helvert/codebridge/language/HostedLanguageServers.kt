@@ -1160,6 +1160,7 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
         runCatching {
             ExtensionActivations.failure(call)?.let { failure ->
                 LOG.warn(failure.message)
+                HostedActivationFailures.getInstance(project).failed(failure.extensionId, failure.message)
                 if (failure.notifiesUser) {
                     messages.notify(Messages.Severity.ERROR, failure.message, source = failure.extensionId,
                         detail = "Install and enable '${failure.missingDependency}' in VS Code Extensions.")
@@ -1219,6 +1220,7 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
             testing.hostStopped()
             CodeBridgeHostService.all.forEach { it.hostStopped(project) }
             messages.hostStopped()
+            HostedActivationFailures.getInstance(project).hostStopped()
             HostedClient.getInstance(project).hostStopped()
         }
     }
