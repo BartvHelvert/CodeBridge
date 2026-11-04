@@ -19,6 +19,12 @@
         ]
       }
     ],
+    "snippets": [
+      {
+        "language": "codebridgegrammar",
+        "path": "./snippets/probe.json"
+      }
+    ],
     "grammars": [
       {
         "language": "codebridgegrammar",

@@ -1,0 +1,7 @@
+{
+  "Probe block": {
+    "prefix": "probeblock",
+    "body": ["PROBE ${1:name} {", "\t$0", "}"],
+    "description": "A probe block"
+  }
+}

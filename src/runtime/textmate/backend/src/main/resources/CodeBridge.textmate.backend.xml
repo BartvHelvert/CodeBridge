@@ -11,6 +11,9 @@
         <textmate.bundleProvider implementation="me.helvert.codebridge.textmate.CodeBridgeTextMateBundles"/>
         <enterBetweenBracesDelegate language="textmate"
                                     implementationClass="me.helvert.codebridge.textmate.CodeBridgeTextMateEnterBetweenBraces"/>
+        <!-- Before the live-template contributor, whose items are the ones to leave out. -->
+        <completion.contributor language="textmate" order="first, before liveTemplates"
+                                implementationClass="me.helvert.codebridge.textmate.CodeBridgeTextMateSnippets"/>
     </extensions>
     <extensions defaultExtensionNs="me.helvert.codebridge">
         <fileLanguage implementation="me.helvert.codebridge.textmate.CodeBridgeTextMateFileLanguage"/>

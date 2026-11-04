@@ -166,6 +166,28 @@ class VsixManifestParserTest {
     }
 
     @Test
+    fun `reads snippet files, for a language or for every one`() {
+        val result = VsixManifestParser.parse(
+            """
+            { "publisher": "p", "name": "n", "version": "1.0.0", "contributes": { "snippets": [
+                { "language": "javascript", "path": "./snippets/js.json" },
+                { "path": "./snippets/all.code-snippets" },
+                { "language": "javascript" }
+              ] }
+            }
+            """.trimIndent()
+        )
+
+        val manifest = assertNotNull(result.manifest)
+        assertEquals(
+            listOf(SnippetContribution("javascript", "./snippets/js.json"), SnippetContribution(null, "./snippets/all.code-snippets")),
+            manifest.contributes.snippets,
+        )
+        assertContains(result.problems.single(), "contributes.snippets[2]")
+        assertTrue("snippets" !in manifest.contributes.ignoredKeys)
+    }
+
+    @Test
     fun `a package json that is not an extension is rejected with a reason`() {
         val result = VsixManifestParser.parse("""{ "name": "just-an-npm-package", "version": "1.0.0" }""")
         assertEquals(null, result.manifest)

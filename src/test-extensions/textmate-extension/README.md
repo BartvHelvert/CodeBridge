@@ -2,7 +2,8 @@
 
 A declarative extension with no JavaScript entry point or server. It claims `.codebridgegrammar` and
 colours `PROBE` as a keyword and double-quoted text as a string. Its language configuration
-declares brackets and indentation rules, for the editing tests. Example:
+declares brackets and indentation rules, for the editing tests, and it contributes one snippet,
+`probeblock`, for the snippet tests. Example:
 
 ```text
 PROBE ordinary "string"
