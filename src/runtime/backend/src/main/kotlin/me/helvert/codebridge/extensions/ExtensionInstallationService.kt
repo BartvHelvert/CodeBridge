@@ -72,6 +72,20 @@ class ExtensionInstallationService(scope: CoroutineScope) {
         return changed
     }
 
+    /**
+     * A running extension's platform package, unpacked into its own directory; see
+     * [ExtensionStore.addPlatformPackage]. Not for one a plugin brings, whose files are the plugin's.
+     */
+    fun addPlatformPackage(path: Path): InstalledExtension {
+        VsixArchive.readManifest(path).manifest?.let { refuseProvided(it.id, "updated") }
+        val result = store.addPlatformPackage(path)
+        changed()
+        return result
+    }
+
+    /** Deletes the installed extensions' directories nothing names or runs any more; see [ExtensionStore.collect]. */
+    fun collect(inUse: Set<Path>) = store.collect(inUse)
+
     fun uninstall(id: String): Boolean {
         refuseProvided(id, "uninstalled")
         val removed = store.uninstall(id)
