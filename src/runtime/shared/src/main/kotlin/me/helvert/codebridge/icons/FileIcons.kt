@@ -47,13 +47,14 @@ object FileIcons {
      * null if the theme has none for it.
      *
      * The language id first, because that is what answers for the language as a whole; a file of it
-     * could be named anything. Then what the language claims, in its own order, the way VS Code
-     * matches a file: the whole name, then each extension from the longest, so `.d.ts` is `d.ts`
-     * before it is `ts`.
+     * could be named anything. Then what the language claims, in its own order, each extension
+     * whole. Not shortened as [forFile] shortens a file's: the icon stands for every file of the
+     * language, and a language claiming `.drawio` and `.drawio.svg` is not an SVG language, though
+     * its `.drawio.svg` files are drawn as SVG files by their name.
      */
     fun forLanguage(id: String, extensions: List<String>, filenames: List<String>): Icon? {
         val path = MAPPING["language.$id"]
-            ?: extensions.firstNotNullOfOrNull { forExtension(it.removePrefix(".").lowercase()) }
+            ?: extensions.firstNotNullOfOrNull { MAPPING["extension.${it.removePrefix(".").lowercase()}"] }
             ?: filenames.firstNotNullOfOrNull { MAPPING["name.${it.lowercase()}"] }
             ?: return null
         return icon(path)

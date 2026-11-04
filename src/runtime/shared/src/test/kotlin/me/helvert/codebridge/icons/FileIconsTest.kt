@@ -46,9 +46,11 @@ class FileIconsTest {
     }
 
     @Test
-    fun `a language the theme does not know by id is found by its extensions, longest first`() {
-        // `probe.cr` is not in the theme and `cr` is, which is how `.d.ts` reaches `ts`.
-        assertSamePicture(bundled("seti/crystal"), FileIcons.forLanguage("codebridgeprobe", listOf(".probe.cr"), emptyList()))
+    fun `a language the theme does not know by id is found by its extensions, whole`() {
+        assertSamePicture(bundled("seti/crystal"), FileIcons.forLanguage("codebridgeprobe", listOf(".codebridgeprobe", ".cr"), emptyList()))
+        // draw.io's language claims `.drawio.svg`: its `.drawio` files are no SVG files. Its
+        // `.drawio.svg` files still are, by their name; see the file test below.
+        assertNull(FileIcons.forLanguage("codebridgeprobe", listOf(".codebridgeprobe", ".probe.cr"), emptyList()))
     }
 
     @Test
