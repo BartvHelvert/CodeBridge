@@ -6,7 +6,7 @@ import com.intellij.driver.model.OnDispatcher
 import com.intellij.driver.model.RdTarget
 import com.intellij.driver.sdk.Project
 import com.intellij.driver.sdk.VirtualFile
-import com.intellij.driver.sdk.invokeAction
+import com.intellij.driver.sdk.invokeActionWithRetries
 import com.intellij.driver.sdk.singleProject
 import com.intellij.driver.sdk.ui.components.common.codeEditor
 import com.intellij.driver.sdk.ui.components.common.ideFrame
@@ -85,7 +85,8 @@ class SplitModeTabColorProbe {
             val driver = run.driver
             val editor = driver.ideFrame { }.codeEditor()
             editor.goToPosition(1, 24) // The declaration of Shape, whose subtype is Circle.
-            driver.invokeAction("TypeHierarchy", component = editor.component)
+            // The action's availability follows the caret across the split after the client moves it.
+            driver.invokeActionWithRetries("TypeHierarchy", maxAttempts = 120)
             val texts = awaitValue("Circle in the client's type hierarchy", {
                 driver.ideFrame { }.getAllTexts().map { it.text }
             }) { values -> values.any { it.contains("Circle") } }
