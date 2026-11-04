@@ -1160,8 +1160,10 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
         runCatching {
             ExtensionActivations.failure(call)?.let { failure ->
                 LOG.warn(failure.message)
-                messages.notify(Messages.Severity.ERROR, failure.message, source = failure.extensionId,
-                    detail = failure.missingDependency?.let { "Install and enable '$it' in VS Code Extensions." })
+                if (failure.notifiesUser) {
+                    messages.notify(Messages.Severity.ERROR, failure.message, source = failure.extensionId,
+                        detail = "Install and enable '${failure.missingDependency}' in VS Code Extensions.")
+                }
                 return@runCatching
             }
             val args = Args.of(call.method, call.argsJson)

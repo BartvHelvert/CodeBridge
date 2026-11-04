@@ -25,6 +25,12 @@ class ExtensionActivationsTest {
             assertNotNull(ExtensionActivations.failure(failed(missing = """{"dependency":"acme.dependency"}""")))
         assertEquals("acme.dependency", failure.missingDependency)
         assertEquals("Dependency failed", failure.message)
+        assertTrue(failure.notifiesUser)
+    }
+
+    @Test
+    fun `any other failure is left for the extension to explain`() {
+        assertFalse(assertNotNull(ExtensionActivations.failure(failed())).notifiesUser)
     }
 
     @Test
