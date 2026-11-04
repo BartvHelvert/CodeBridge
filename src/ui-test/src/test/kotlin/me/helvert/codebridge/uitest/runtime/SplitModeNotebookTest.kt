@@ -383,9 +383,18 @@ class SplitModeNotebookTest {
             awaitProbeValue("the move of both undone as one step", ::cells) { it == listOf("two", "three", "one", "two") }
             hostCells("""["two\n2\n2","three\n3\n3","one\n1\n1","two\n2\n2"]""")
 
-            // The undo leaves both selected again, so they are dragged together once more. The cells come
-            // back from the backend apart from the selection, which may follow them a moment later.
+            // Selection follows the edit events, so it cannot be cleared by a late splice.
             awaitProbeValue("both cells selected again by the undo", ::selected) { it == listOf(true, true, false, false) }
+            repeat(3) {
+                frame.keyboard { hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_SHIFT, KeyEvent.VK_Z) }
+                awaitProbeValue("the move of both redone", ::cells) { it == listOf("one", "two", "two", "three") }
+                hostCells("""["one\n1\n1","two\n2\n2","two\n2\n2","three\n3\n3"]""")
+                awaitProbeValue("both cells selected again by the redo", ::selected) { it == listOf(false, false, true, true) }
+                frame.keyboard { hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_Z) }
+                awaitProbeValue("the move of both undone again", ::cells) { it == listOf("two", "three", "one", "two") }
+                hostCells("""["two\n2\n2","three\n3\n3","one\n1\n1","two\n2\n2"]""")
+                awaitProbeValue("both cells selected again by the undo", ::selected) { it == listOf(true, true, false, false) }
+            }
             driver.withContext { driver.ui.dragAndDrop(handles()[0], to = handles()[3]) }
             awaitProbeValue("both cells, still selected, moved last again", ::cells) { it == listOf("one", "two", "two", "three") }
             hostCells("""["one\n1\n1","two\n2\n2","two\n2\n2","three\n3\n3"]""")

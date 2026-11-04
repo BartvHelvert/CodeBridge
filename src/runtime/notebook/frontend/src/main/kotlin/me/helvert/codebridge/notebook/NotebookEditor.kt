@@ -259,6 +259,16 @@ internal class NotebookEditor(
                 event.cells.forEachIndexed { offset, cell -> insert(event.start + offset, cell) }
             }
             is NotebookEventDto.Text -> cell(event.handle)?.setText(event.text)
+            is NotebookEventDto.Selected -> {
+                // Keep editing where the user went while the undo or redo was on its way.
+                if (cellList.isFocusOwner || focused == null) {
+                    event.handles.lastOrNull()?.let(::cell)?.let { last ->
+                        select(last)
+                        anchor = cell(event.handles.first())
+                        highlight()
+                    }
+                }
+            }
             is NotebookEventDto.Outputs -> cell(event.handle)?.setOutputs(event.outputs)
             is NotebookEventDto.Run -> {
                 cell(event.handle)?.setRun(event.run)
@@ -668,19 +678,9 @@ internal class NotebookEditor(
         cells.getOrNull(index.coerceIn(0, cells.size - 1))?.let(::select)
     }
 
-    /** Undoes or redoes the notebook's last cell edit, then selects the cells it touched. */
+    /** Undoes or redoes the notebook's last cell edit; its flow restores selection after the edits. */
     private fun replay(step: suspend NotebookApi.(ProjectId, String) -> List<Int>) {
-        call { projectId ->
-            val handles = step(projectId, id).ifEmpty { return@call }
-            // Unless the user went on to edit a cell meanwhile, as VS Code keeps the focus where it is.
-            whenShown({ it.handle == handles.last() }) { last ->
-                if (cellList.isFocusOwner || focused == null) {
-                    select(last)
-                    anchor = cell(handles.first())
-                    highlight()
-                }
-            }
-        }
+        call { step(it, id) }
     }
 
     private fun runCells(handles: List<Int>) {
