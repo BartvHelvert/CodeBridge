@@ -229,7 +229,11 @@ internal fun IDETestContext.runSplitIde(
         run.driver.withContext(OnDispatcher.EDT) { ideFrame.component.requestFocus() }
         waitFor("the client's frame focused", FOCUS) { ideFrame.isFocused() }
     } catch (e: Throwable) {
-        run.closeIdeAndWait()
+        try {
+            run.closeIdeAndWait()
+        } catch (closeError: Throwable) {
+            e.addSuppressed(closeError)
+        }
         throw e
     }
     return run

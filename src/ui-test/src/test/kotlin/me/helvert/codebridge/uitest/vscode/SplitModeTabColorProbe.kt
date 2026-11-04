@@ -14,7 +14,6 @@ import com.intellij.ide.starter.ide.IDERemDevTestContext
 import com.intellij.ide.starter.junit5.RemoteDevRun
 import com.intellij.ide.starter.runner.Starter
 import com.intellij.tools.ide.performanceTesting.commands.CommandChain
-import com.intellij.tools.ide.performanceTesting.commands.openFile
 import com.intellij.tools.ide.performanceTesting.commands.waitForSmartMode
 import me.helvert.codebridge.uitest.Installed
 import me.helvert.codebridge.uitest.builtAgainst
@@ -41,7 +40,7 @@ class SplitModeTabColorProbe {
         val outside = project.parent.resolve("outside.txt").also { it.writeText("Outside the project\n") }
         val context = context("split-mode-tab-colour", project)
         val run = context.runSplitIde(
-            commands = CommandChain().waitForSmartMode().openFile(outside.toString()),
+            commands = CommandChain().waitForSmartMode(), open = outside.invariantSeparatorsPathString,
             jdk = true,
         )
         var failure: Throwable? = null
