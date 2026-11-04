@@ -116,6 +116,14 @@ class SplitModeExtensionTest {
             awaitValue("the edited snippet in the client", { editor.text }) {
                 it == "${completed}wrap(argument)"
             }
+            // The template runs on the backend, which Tab has to reach after the typing: on CI a Tab
+            // right after it was once lost, leaving the template on and the caret on the placeholder.
+            awaitValue("the edited snippet on the backend", {
+                driver.withContext(OnDispatcher.EDT) {
+                    driver.service(SplitModeWorkbenchTest.EditorFactoryRef::class, RdTarget.BACKEND).getAllEditors()
+                        .map { it.getDocument().getText() }
+                }
+            }) { "${completed}wrap(argument)" in it }
             editor.keyboard { key(KeyEvent.VK_TAB) }
             awaitValue("the caret after the snippet's final stop", {
                 editor.getCaretLine() to editor.getCaretColumn()
