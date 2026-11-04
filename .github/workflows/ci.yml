@@ -166,11 +166,14 @@ jobs:
           retention-days: 14
 
   ui-test:
-    name: Split-mode UI tests (${{ matrix.os }})
+    name: Split-mode UI tests (${{ matrix.os }}, ${{ matrix.shard }}/2)
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, windows-2025]
+        # Half the test classes each, by test count (see `uiTestShard` in src/ui-test): all of them
+        # on one Windows runner outgrew the step's 100 minutes.
+        shard: [1, 2]
     runs-on: ${{ matrix.os }}
     # Each test starts a backend and a client, a few minutes apiece on a two-core runner.
     timeout-minutes: 120
@@ -272,9 +275,9 @@ jobs:
           trap "kill $!" EXIT
           if [ "$RUNNER_OS" = Linux ]; then
             xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
-              ./gradlew :ui-test:test -PsearchableOptions=false --console=plain
+              ./gradlew :ui-test:test -PsearchableOptions=false -PuiTestShard=${{ matrix.shard }}/2 --console=plain
           else
-            ./gradlew :ui-test:test -PsearchableOptions=false --console=plain
+            ./gradlew :ui-test:test -PsearchableOptions=false -PuiTestShard=${{ matrix.shard }}/2 --console=plain
           fi
 
       # A test stopped by a timeout leaves its IDEs running, and on Windows their locked files make
@@ -292,7 +295,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: ui-test-reports-${{ matrix.os }}
+          name: ui-test-reports-${{ matrix.os }}-${{ matrix.shard }}
           path: |
             src/ui-test/build/reports/tests/
             src/ui-test/build/test-results/
@@ -307,7 +310,7 @@ jobs:
         if: failure() || cancelled()
         uses: actions/upload-artifact@v5
         with:
-          name: ui-test-ide-logs-${{ matrix.os }}
+          name: ui-test-ide-logs-${{ matrix.os }}-${{ matrix.shard }}
           path: |
             out/ide-tests/tests/*/*/*-test/
             !out/ide-tests/tests/**/heap-dump/

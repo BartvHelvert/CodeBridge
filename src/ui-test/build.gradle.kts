@@ -90,6 +90,35 @@ val probeVsix = rootProject.layout.buildDirectory.file("fixtures/codebridge-lsp-
 val testTaskPath = "$path:test"
 val requestedByName = gradle.startParameter.taskNames.any { it == testTaskPath || it == testTaskPath.removePrefix(":") }
 
+/**
+ * The test classes of shard [index] of [count], for `-PuiTestShard=<index>/<count>`: CI runs the
+ * shards on runners of their own, as the whole suite took longer than one job may.
+ *
+ * Balanced by `@Test` count, as each test starts its own backend and client, which is most of its
+ * time. A class stays whole. Read from the sources, one test class to a file, named as the file is.
+ */
+fun uiTestShard(index: Int, count: Int): List<String> {
+    require(count > 0 && index in 1..count) { "uiTestShard is <index>/<count>, with index from 1 to count" }
+    val classes = layout.projectDirectory.dir("src/test/kotlin").asFileTree.matching { include("**/*.kt") }.files
+        .map { file ->
+            val text = file.readText()
+            val pkg = Regex("""^package\s+([\w.]+)""", RegexOption.MULTILINE).find(text)?.groupValues?.get(1)
+            listOfNotNull(pkg, file.nameWithoutExtension).joinToString(".") to
+                Regex("""^\s*@Test\b""", RegexOption.MULTILINE).findAll(text).count()
+        }
+        .filter { (_, tests) -> tests > 0 }
+        .sortedWith(compareByDescending<Pair<String, Int>> { it.second }.thenBy { it.first })
+    // The largest first, each to the shard with the fewest tests so far.
+    val shards = List(count) { mutableListOf<String>() }
+    val load = IntArray(count)
+    for ((name, tests) in classes) {
+        val shard = load.indices.minBy { load[it] }
+        shards[shard] += name
+        load[shard] += tests
+    }
+    return shards[index - 1]
+}
+
 tasks.test {
     useJUnitPlatform()
     dependsOn(windowAgentJar)
@@ -130,6 +159,19 @@ tasks.test {
     // Two IDEs per test, both downloaded on the first run, and each launch indexes its project
     // before the test starts: minutes apiece on a two-core CI runner. Inside the CI job's two hours.
     timeout.set(Duration.ofMinutes(110))
+    providers.gradleProperty("uiTestShard").orNull?.let { shard ->
+        val (index, count) = shard.split('/').map(String::toInt)
+        val classes = uiTestShard(index, count)
+        logger.lifecycle("UI test shard $shard: ${classes.joinToString { it.substringAfterLast('.') }.ifEmpty { "nothing" }}")
+        filter {
+            classes.forEach(::includeTestsMatching)
+            // An empty shard: without any include, the filter would run every test.
+            if (classes.isEmpty()) {
+                includeTestsMatching("none.NoTests")
+                isFailOnNoMatchingTests = false
+            }
+        }
+    }
     // A local copy: the configuration cache cannot keep a reference to the script itself.
     val requested = requestedByName
     onlyIf("the UI tests run only when :ui-test:test is asked for by name") { requested }
