@@ -33,7 +33,6 @@ internal class CodeBridgeTextMateLineIndent : LineIndentProvider {
     override fun getLineIndent(project: Project, editor: Editor, language: Language?, offset: Int): String? {
         if (language !is TextMateLanguage) return null
         val scope = (editor as? EditorEx)?.let(TextMateEditorUtils::getCurrentScopeSelector) ?: return null
-        val file = editor.virtualFile ?: return null
         val preferences = TextMateService.getInstance().preferenceRegistry.getPreferences(scope)
 
         val document = editor.document
@@ -47,7 +46,7 @@ internal class CodeBridgeTextMateLineIndent : LineIndentProvider {
             preferences.fold(IndentationRules.empty()) { rules, it -> rules.updateWith(it.indentationRules) },
             preferences.flatMap { it.onEnterRules.orEmpty() }.map { it.beforeText.text to it.action.indent },
         ) ?: return null
-        val options = CodeStyle.getSettings(project, file).getIndentOptionsByFile(project, file, null)
+        val options = CodeStyle.getIndentOptions(project, document)
         val indent = maxOf(previous.indentOfLine(options) + change * options.TAB_SIZE, 0)
         return IndentInfo(0, indent, 0).generateNewWhiteSpace(options)
     }
