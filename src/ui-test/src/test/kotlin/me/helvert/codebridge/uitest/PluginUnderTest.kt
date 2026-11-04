@@ -2,6 +2,7 @@ package me.helvert.codebridge.uitest
 
 import com.intellij.driver.sdk.ManualWaitForIndicators
 import com.intellij.driver.sdk.openFile
+import com.intellij.driver.sdk.ui.components.common.ideFrame
 import com.intellij.driver.sdk.waitForIndicators
 import com.intellij.ide.starter.community.PublicIdeDownloader
 import com.intellij.ide.starter.driver.driver.remoteDev.RemoteDevBackgroundRun
@@ -215,6 +216,11 @@ internal fun IDETestContext.runSplitIde(
             run.backendRun.driver.waitForIndicators(STARTUP)
         }
         if (open != null) run.driver.openFile(open, waitForCodeAnalysis = false)
+        // Xvfb has no window manager to give the client's frame back the focus once its connection
+        // dialog closes. Until a click lands on something that asks for it, such as an editor, no
+        // window is focused, and a component asking for the focus in its window, as a new notebook
+        // cell does, never gets it: typing then finds no focus owner.
+        run.driver.ideFrame { }.ensureFocused()
     } catch (e: Throwable) {
         run.closeIdeAndWait()
         throw e
