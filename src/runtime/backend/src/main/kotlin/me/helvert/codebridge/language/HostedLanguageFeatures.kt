@@ -3509,12 +3509,13 @@ class HostedLanguageFeatures(
      * host is up to date with it, and a second language for one document is refused.
      *
      * [untitled] names a buffer with no file on disk -- `untitled:Untitled-1` -- which [file] stands
-     * in for in IntelliJ.
+     * in for in IntelliJ. [holder] is who holds it, each releasing only its own hold: the extensions
+     * that asked for it ([HOLDER]), or the custom editors showing it.
      */
-    fun documentHeld(file: VirtualFile, languageId: String, snapshot: Snapshot, untitled: String? = null): String {
+    fun documentHeld(file: VirtualFile, languageId: String, snapshot: Snapshot, untitled: String? = null, holder: String = HOLDER): String {
         val mirror = checkNotNull(documents) { "The extension host is not running" }
         val uri = uris[file] ?: untitled ?: uriOf(file)
-        mirror.open(HOLDER, uri, languageIds[file] ?: languageId, mirrored[file] ?: snapshot.text, dirty(uri, snapshot),
+        mirror.open(holder, uri, languageIds[file] ?: languageId, mirrored[file] ?: snapshot.text, dirty(uri, snapshot),
             shown = false, encoding = encodingOf(file), indentation = indentationOf(file))
         files[ExtensionHostDocuments.key(uri)] = file
         uris[file] = uri
@@ -3523,13 +3524,13 @@ class HostedLanguageFeatures(
         return mirror.spellingOf(uri) ?: uri
     }
 
-    /** Lets go of a file [documentHeld] put into the host; it stays while an editor shows it. */
-    fun documentReleased(file: VirtualFile) {
+    /** Lets go of [holder]'s hold on a file [documentHeld] put into the host; it stays while anyone else has it. */
+    fun documentReleased(file: VirtualFile, holder: String = HOLDER) {
         val mirror = documents ?: return
         val uri = uris[file] ?: return
         // Forgotten before the host is told, so whatever hears that it is gone finds it gone here too.
-        if (!mirror.isOpen(OWNER, uri)) forget(file, uri)
-        runCatching { mirror.close(HOLDER, uri) }
+        if ((mirror.ownersOf(uri) - holder).isEmpty()) forget(file, uri)
+        runCatching { mirror.close(holder, uri) }
             .onFailure { LOG.warn("Could not withdraw ${file.name} from the extension host", it) }
     }
 
@@ -3554,7 +3555,10 @@ class HostedLanguageFeatures(
     }.getOrDefault(Indentation.DEFAULT)
 
     /** Whichever owner has [uri] mirrored, which is who edits and saves are reported for. */
-    private fun ownerOf(mirror: ExtensionHostDocuments, uri: String) = if (mirror.isOpen(OWNER, uri)) OWNER else HOLDER
+    private fun ownerOf(mirror: ExtensionHostDocuments, uri: String): String {
+        val owners = mirror.ownersOf(uri)
+        return if (OWNER in owners) OWNER else owners.firstOrNull() ?: HOLDER
+    }
 
     /**
      * Sends an edit on, so the extension's server sees the buffer rather than the file on disk.
@@ -3687,7 +3691,7 @@ class HostedLanguageFeatures(
         foldJobs.remove(file)?.cancel()
         runCatching { mirror.close(OWNER, uri) }
             .onFailure { LOG.warn("Could not withdraw ${file.name} from the extension host", it) }
-        if (!mirror.isOpen(HOLDER, uri)) forget(file, uri)
+        if (mirror.ownersOf(uri).isEmpty()) forget(file, uri)
     }
 
     /** Drops what was kept about a document the host no longer holds. */
@@ -3900,7 +3904,7 @@ class HostedLanguageFeatures(
         private const val OWNER = "intellij"
 
         /** Who holds the documents extensions opened themselves; see [documentHeld]. */
-        private const val HOLDER = "extensions"
+        internal const val HOLDER = "extensions"
 
         /** Compared by value, to drop a resource whose last collection has just withdrawn. */
         private val EMPTY_PROBLEMS = ConcurrentHashMap<String, List<Marker>>()

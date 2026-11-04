@@ -20,6 +20,7 @@ internal class WorkbenchProbe(val driver: Driver, val project: Path, private val
     }) { it != null }!!
     private val servers = driver.service(SplitModeViewsTest.HostedLanguageServersRef::class, backend, RdTarget.BACKEND)
     fun command(name: String): String? = servers.executeCommandForTest(name, "[]")
+    fun command(name: String, argsJson: String): String? = servers.executeCommandForTest(name, argsJson)
 
     /** What the backend has logged so far: its `idea.log`, not the client's, which is under `frontend`. */
     fun backendLog(): String = Files.walk(home).use { paths ->

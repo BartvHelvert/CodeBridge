@@ -74,6 +74,11 @@
              and with the wrong one the editor calls a Rust file a TextMate file. An overrider is
              consulted before both the TextMate plugin's claim and content detection. -->
         <fileTypeOverrider implementation="me.helvert.codebridge.language.CodeBridgeLanguageFileTypeOverrider"/>
+        <!-- A file a custom editor opens by default that the IDE would hand to the system's application
+             (a PDF), which a split-mode backend cannot do: typed so that it opens in an editor, the
+             placeholder below, which the client replaces with the custom editor. -->
+        <fileTypeOverrider implementation="me.helvert.codebridge.workbench.CustomEditorFileTypeOverrider"/>
+        <fileEditorProvider implementation="me.helvert.codebridge.workbench.CustomEditorPlaceholderProvider"/>
         <!-- VS Code's file icons by file name, as VS Code draws them, for files the IDE has no type of its own for. -->
         <fileIconProvider implementation="me.helvert.codebridge.language.CodeBridgeFileIconProvider"/>
         <!-- Ordinary highlighting, so it reaches a split-mode frontend; IntelliJ's LSP client does not.

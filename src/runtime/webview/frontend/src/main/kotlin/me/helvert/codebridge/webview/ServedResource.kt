@@ -19,8 +19,16 @@ import org.cef.misc.StringRef
 import org.cef.network.CefRequest
 import org.cef.network.CefResponse
 
-/** A file the browser asked for, and its media type. */
-internal class Loaded(val bytes: ByteArray, val mimeType: String)
+/**
+ * A file the browser asked for, and its media type; or with [status] 304, word that the copy the
+ * asker has is the file as it is now. [headers] are sent besides the usual ones, such as its `ETag`.
+ */
+internal class Loaded(
+    val bytes: ByteArray,
+    val mimeType: String,
+    val status: Int = 200,
+    val headers: Map<String, String> = emptyMap(),
+)
 
 /**
  * Answers a request with what [load] reads, in [scope]; nothing found is a 404. [what] names the page
@@ -31,6 +39,10 @@ internal fun served(scope: CoroutineScope, what: String, load: suspend () -> Loa
         override fun getResourceHandler(browser: CefBrowser?, frame: CefFrame?, request: CefRequest?): CefResourceHandler =
             Served(scope, what, load)
     }
+
+/** The response [served] gives, for a scheme handler factory, which answers requests no browser made. */
+internal fun servedResponse(scope: CoroutineScope, what: String, load: suspend () -> Loaded?): CefResourceHandler =
+    Served(scope, what, load)
 
 /**
  * One response, read when the browser opens it and handed over as it asks for it.
@@ -76,13 +88,14 @@ private class Served(
             responseLength.set(0)
             return
         }
-        response.status = 200
-        response.statusText = "OK"
+        response.status = found.status
+        response.statusText = if (found.status == 304) "Not Modified" else "OK"
         response.mimeType = found.mimeType
         // A page's own address is another origin than its resources', and fonts and module
         // scripts are fetched with CORS.
         response.setHeaderByName("Access-Control-Allow-Origin", "*", true)
         response.setHeaderByName("Cache-Control", "no-cache", true)
+        found.headers.forEach { (name, value) -> response.setHeaderByName(name, value, true) }
         responseLength.set(found.bytes.size)
     }
 

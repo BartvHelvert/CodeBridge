@@ -11,7 +11,7 @@ import me.helvert.codebridge.exthost.protocol.payload.TextEdit
  * Strict where [DocumentLines] is lenient. A diagnostic that names a line since deleted is still
  * worth drawing somewhere nearby; an edit that does is about text the user has already replaced,
  * and applying it anywhere would corrupt the file. So a range that does not fit is a refusal of the
- * whole set, never a clamp.
+ * whole set, never a clamp -- except through [clamped], for `workspace.applyEdit`, where VS Code clamps.
  */
 internal object CodeBridgeTextEdits {
 
@@ -94,6 +94,31 @@ internal object CodeBridgeTextEdits {
 
     /** VS Code's 1-based range as offsets, or null when it names a line or column [text] lacks. */
     fun offsets(text: CharSequence, range: Range): TextRange? = offsets(text, lineStarts(text), range)
+
+    /**
+     * [edits] with every position moved into [text], as VS Code's text model validates the ranges
+     * of `workspace.applyEdit`: a line past the last means the end of the text, a column past the
+     * end of its line means that end.
+     *
+     * Only for that path, where VS Code clamps and extensions count on it. Draw.io replaces its whole
+     * file with `Range(0, 0, lineCount, 0)`, a line past the end, on every change it makes.
+     */
+    fun clamped(text: CharSequence, edits: List<TextEdit>): List<TextEdit> {
+        val lines = lineStarts(text)
+        fun lineLength(line: Int) = (if (line < lines.size) lines[line] - 1 else text.length) - lines[line - 1]
+        fun position(line: Int, column: Int): Pair<Int, Int> = when {
+            line < 1 -> 1 to 1
+            line > lines.size -> lines.size to lineLength(lines.size) + 1
+            else -> line to column.coerceIn(1, lineLength(line) + 1)
+        }
+        return edits.map { edit ->
+            val range = edit.range
+            val (startLine, startColumn) = position(range.startLineNumber, range.startColumn)
+            val (endLine, endColumn) = position(range.endLineNumber, range.endColumn)
+            val fitted = Range(startLine, startColumn, endLine, endColumn)
+            if (fitted == range) edit else edit.copy(range = fitted)
+        }
+    }
 
     /** The 1-based range covering all of [text], the shape a whole-document request is given. */
     fun whole(text: CharSequence): Range {

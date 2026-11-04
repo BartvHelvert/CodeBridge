@@ -7,6 +7,8 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
 /** What a webview's page may read: files under the roots its extension allowed, and nothing else. */
@@ -23,6 +25,23 @@ class WebviewResourcesTest {
         val read = HostedWebviews.read(address(media.resolve("main.js")) + "?v=2", listOf(UriComponents.of(temp.resolve("ext"))))
         assertEquals("go()", read?.bytes?.decodeToString())
         assertEquals("text/javascript", read?.mimeType)
+    }
+
+    @Test
+    fun `leaves out the bytes of a file still at the version the asker has, and sends them once it changed`() {
+        val root = Files.createDirectories(temp.resolve("ext"))
+        val file = Files.writeString(root.resolve("main.js"), "go()")
+        val roots = listOf(UriComponents.of(root))
+        val first = assertNotNull(HostedWebviews.read(address(file), roots))
+        val again = assertNotNull(HostedWebviews.read(address(file), roots, first.version))
+        assertNull(again.bytes)
+        assertEquals(first.version, again.version)
+        assertEquals("text/javascript", again.mimeType)
+
+        Files.writeString(file, "went()")
+        val changed = assertNotNull(HostedWebviews.read(address(file), roots, first.version))
+        assertEquals("went()", changed.bytes?.decodeToString())
+        assertNotEquals(first.version, changed.version)
     }
 
     @Test

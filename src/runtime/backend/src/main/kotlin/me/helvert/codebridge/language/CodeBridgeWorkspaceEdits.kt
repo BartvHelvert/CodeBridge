@@ -284,13 +284,14 @@ internal object CodeBridgeWorkspaceEdits {
         if (!document.isWritable) return false.also { LOG.info("Refused an edit to ${file.name}: it is read-only") }
         val live = snippets?.takeIf { it.editor.document == document }
         val indentation = live?.let { CodeBridgeSnippetTemplates.indentation(project, document) }
-        val located = CodeBridgeTextEdits.locate(document.immutableCharSequence, batch.map { it.edit }, indentation)
+        val edits = CodeBridgeTextEdits.clamped(document.immutableCharSequence, batch.map { it.edit })
+        val located = CodeBridgeTextEdits.locate(document.immutableCharSequence, edits, indentation)
             ?: return false.also {
                 // What did not fit, and what it was measured against, since nothing else records either.
                 val text = document.immutableCharSequence
                 val lines = text.split('\n')
                 LOG.info(
-                    "Refused an edit to ${file.name}: its ranges do not fit the document " +
+                    "Refused an edit to ${file.name}: its ranges overlap or do not fit the document " +
                             "(${lines.size} line(s), the last ${lines.last().length} long, ${text.length} chars; " +
                             "ranges ${batch.joinToString { it.edit.range.let { r -> "${r.startLineNumber}:${r.startColumn}-${r.endLineNumber}:${r.endColumn}" } }}; " +
                             "the host's copy ${describeMirror(project, file, text)})"

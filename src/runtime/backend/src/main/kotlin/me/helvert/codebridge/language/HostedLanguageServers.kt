@@ -858,6 +858,7 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
         statusBar.hostStarted(hosts)
         treeViews.hostStarted(hosts, workbench::executeCommand)
         webviews.hostStarted(hosts)
+        HostedCustomEditors.getInstance(project).hostStarted(hosts)
         HostedContentProviders.getInstance(project).hostStarted(hosts)
         decorations.hostStarted { service, method, args -> hosts.call(service, method, args, true) }
         testing.hostStarted { service, method, args, cancellable -> hosts.call(service, method, args, cancellable) }
@@ -1112,6 +1113,7 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
         if (call.service == TreeViews.SERVICE) { treeViews.handle(call); return@synchronized null }
         // Routed by service name: `$postMessage` is answered with whether the message went out.
         if (call.service in WEBVIEW_SERVICES) return@synchronized webviews.handle(call)
+        if (call.service == CustomEditors.SERVICE) { HostedCustomEditors.getInstance(project).handle(call); return@synchronized null }
         if (call.service == Decorations.SERVICE) { decorations.handle(call); return@synchronized null }
         if (call.service == DocumentContentProviders.SERVICE) {
             HostedContentProviders.getInstance(project).handle(call); return@synchronized null
@@ -1206,6 +1208,7 @@ class HostedLanguageServers(private val project: Project, private val scope: Cor
             statusBar.hostStopped()
             treeViews.hostStopped()
             webviews.hostStopped()
+            HostedCustomEditors.getInstance(project).hostStopped()
             decorations.hostStopped()
             HostedContentProviders.getInstance(project).hostStopped()
             HostedContextKeys.getInstance(project).hostStopped()

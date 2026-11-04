@@ -74,6 +74,17 @@ class TextEditsTest {
     }
 
     @Test
+    fun `clamps workspace edits into the text as VS Code does`() {
+        val text = "ab\ncd\n"
+        // Draw.io's whole-file replacement: Range(0, 0, lineCount, 0), a line past the end.
+        val whole = CodeBridgeTextEdits.clamped(text, listOf(edit(1, 1, 4, 1, "x")))
+        assertEquals("x", CodeBridgeTextEdits.apply(text, whole))
+        val past = CodeBridgeTextEdits.clamped(text, listOf(edit(1, 9, 2, 9, "x")))
+        assertEquals(listOf(Range(1, 3, 2, 3)), past.map { it.range })
+        assertEquals(listOf(Range(1, 1, 1, 1)), CodeBridgeTextEdits.clamped(text, listOf(edit(0, 0, 0, 0, ""))).map { it.range })
+    }
+
+    @Test
     fun `converts between offsets and ranges`() {
         val text = "ab\ncd"
         assertEquals(Range(1, 1, 2, 3), CodeBridgeTextEdits.whole(text))

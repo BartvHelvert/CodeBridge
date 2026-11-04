@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body>
+<script>
+// A page loaded before its origin's service worker controls it: starts the worker, then loads the
+// page again, through it. Should the worker not start, the page is loaded without it, as before.
+(function () {
+    'use strict';
+    let done = false;
+    const without = function (why) {
+        if (done) return;
+        done = true;
+        console.warn('Loading the webview without its service worker: ' + why);
+        const url = new URL(location.href);
+        url.searchParams.set('sw', '0');
+        location.replace(url.href);
+    };
+    const again = function () {
+        if (done) return;
+        done = true;
+        location.reload();
+    };
+    if (!navigator.serviceWorker) return without('there are no service workers here');
+    setTimeout(function () { without('it did not take over in time'); }, 5000);
+    navigator.serviceWorker.addEventListener('controllerchange', again, {once: true});
+    navigator.serviceWorker.register('/service-worker.js', {scope: '/'}).then(function () {
+        if (navigator.serviceWorker.controller) again();
+    }, function (error) { without(String(error)); });
+})();
+</script>
+</body>
+</html>

@@ -11,7 +11,55 @@
     "onStartupFinished"
   ],
   "contributes": {
+    "customEditors": [
+      {
+        "viewType": "probe.textEditor",
+        "displayName": "Probe Text Editor",
+        "selector": [
+          {
+            "filenamePattern": "*.probetext"
+          }
+        ]
+      },
+      {
+        "viewType": "probe.counterEditor",
+        "displayName": "Probe Counter",
+        "selector": [
+          {
+            "filenamePattern": "*.probecounter"
+          },
+          {
+            "filenamePattern": "*.probecounter.pdf"
+          }
+        ]
+      },
+      {
+        "viewType": "probe.textViewer",
+        "displayName": "Probe Text Viewer",
+        "priority": "option",
+        "selector": [
+          {
+            "filenamePattern": "*.probetext"
+          }
+        ]
+      },
+      {
+        "viewType": "probe.heavyEditor",
+        "displayName": "Probe Heavy Page",
+        "selector": [
+          {
+            "filenamePattern": "*.probeheavy"
+          }
+        ]
+      }
+    ],
     "languages": [
+      {
+        "id": "probetext",
+        "extensions": [
+          ".probetext"
+        ]
+      },
       {
         "id": "codebridgeactions",
         "extensions": [
