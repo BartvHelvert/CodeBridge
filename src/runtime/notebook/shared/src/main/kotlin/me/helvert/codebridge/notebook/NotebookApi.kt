@@ -80,7 +80,8 @@ interface NotebookApi : RemoteApi<Unit> {
     /**
      * Takes back the notebook's last insert, delete, move, paste, join or output clearing, made in any of its
      * editors; cell text is each cell editor's own to undo. The handles of the cells to select for
-     * it, top to bottom: empty when there was nothing to take back or no cell is left.
+     * it, top to bottom: empty when there was nothing to take back or no cell is left. Selection
+     * also arrives as [NotebookEventDto.Selected], after the edit events in this editor's flow.
      */
     suspend fun undo(projectId: ProjectId, editorId: String): List<Int>
 
@@ -149,6 +150,10 @@ sealed interface NotebookEventDto {
     /** [deleted] cells at [start] gave way to [cells]. */
     @Serializable
     data class Spliced(val start: Int, val deleted: Int, val cells: List<CellDto>) : NotebookEventDto
+
+    /** Selects [handles] in the editor that undid or redid an edit, after that edit's events. */
+    @Serializable
+    data class Selected(val handles: List<Int>) : NotebookEventDto
 
     /** Another editor of the notebook changed cell [handle]'s text. */
     @Serializable

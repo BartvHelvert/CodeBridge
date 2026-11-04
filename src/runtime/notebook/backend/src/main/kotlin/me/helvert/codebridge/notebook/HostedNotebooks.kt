@@ -616,6 +616,11 @@ internal class HostedNotebooks(private val project: Project, private val scope: 
             is NotebookModel.Edit.Outputs -> broadcast(open, NotebookEventDto.Outputs(edit.handle, edit.after.map(NotebookModel::outputDto)))
         }
         dirtied(open)
+        // A separate RPC reply can overtake the edit flow. Restore selection in that flow so
+        // a move's splice cannot remove the views the client has just selected.
+        if (replayed.selection.isNotEmpty()) {
+            open.editors[editorId]?.events?.trySend(NotebookEventDto.Selected(replayed.selection))
+        }
         replayed.selection
     }
 
