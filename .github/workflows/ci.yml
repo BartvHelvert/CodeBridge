@@ -317,3 +317,16 @@ jobs:
             !out/ide-tests/tests/**/heap-dump/
             out/resource-usage.log
           retention-days: 7
+
+  # The check the master ruleset requires, under one name however many shards `ui-test` has. A
+  # required check is matched by name, and the shards' names change with their count.
+  ui-test-result:
+    name: Split-mode UI tests
+    needs: ui-test
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check the shards' result
+        run: |
+          echo "UI test shards: ${{ needs.ui-test.result }}"
+          [ "${{ needs.ui-test.result }}" = success ]
