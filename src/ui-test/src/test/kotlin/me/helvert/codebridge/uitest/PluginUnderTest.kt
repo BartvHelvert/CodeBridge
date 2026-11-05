@@ -6,7 +6,6 @@ import com.intellij.driver.sdk.openFile
 import com.intellij.driver.sdk.ui.components.common.ideFrame
 import com.intellij.driver.sdk.waitFor
 import com.intellij.driver.sdk.waitForIndicators
-import com.intellij.ide.starter.community.PublicIdeDownloader
 import com.intellij.ide.starter.driver.driver.remoteDev.RemoteDevBackgroundRun
 import com.intellij.ide.starter.driver.engine.BackgroundRun
 import com.intellij.ide.starter.driver.engine.runIdeWithDriver
@@ -62,8 +61,9 @@ internal enum class Installed {
  * and Open Project dialog for as long as the test ran.
  *
  * The installer is downloaded to `codebridge.ide.installers`, which every checkout on the machine
- * shares, instead of under this checkout's `out`. What Starter unpacks from it stays per checkout: it
- * deletes and rewrites an unpacked build, which another checkout's tests could be running.
+ * shares, instead of under this checkout's `out`, and reused without a release catalogue lookup.
+ * What Starter unpacks from it stays per checkout: it deletes and rewrites an unpacked build,
+ * which another checkout's tests could be running.
  */
 internal fun builtAgainst(project: Path): TestCase<LocalProjectInfo> {
     val pinned = TestCase(IdeaUltimateProductInit().ideInfo, LocalProjectInfo(project.toRealPath()))
@@ -71,7 +71,7 @@ internal fun builtAgainst(project: Path): TestCase<LocalProjectInfo> {
     val installers = Path.of(checkNotNull(System.getProperty("codebridge.ide.installers")) { "codebridge.ide.installers is not set" })
     // After the build number: that sets an installer of its own, which downloads from the public feed.
     return pinned.onIDE(pinned.ideInfo.copy(getInstaller = {
-        StandardInstaller(PublicIdeDownloader(), Files.createDirectories(installers))
+        StandardInstaller(CachedIdeDownloader(), Files.createDirectories(installers))
     }))
 }
 
