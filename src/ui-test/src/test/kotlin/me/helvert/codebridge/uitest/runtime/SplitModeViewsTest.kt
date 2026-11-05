@@ -64,14 +64,14 @@ class SplitModeViewsTest {
             awaitValue("the webview opened by the tree command", { browser.present() }) { it }
             awaitValue(
                 "the page's extension resource script loaded",
-                { browser.getHtml() }) { it.contains("Clicks: 0") }
+                { html(browser) }) { it.contains("Clicks: 0") }
             // Posted as the panel was made, before its page -- or its description -- reached the client.
             awaitValue(
                 "the message the extension posted at once",
-                { browser.getHtml() }) { it.contains("Hello received") }
+                { html(browser) }) { it.contains("Hello received") }
 
             clickSend(browser, clicks = 0)
-            awaitValue("the page-to-extension-to-page message round trip", { browser.getHtml() }) {
+            awaitValue("the page-to-extension-to-page message round trip", { html(browser) }) {
                 it.contains("Extension acknowledged 1") && it.contains("Clicks: 1")
             }
             awaitValue(
@@ -88,7 +88,7 @@ class SplitModeViewsTest {
             awaitValue("bytes reaching the extension", { webviewState(servers) }) {
                 it?.contains(""""binary":[[1,2,3,250]]""") == true
             }
-            awaitValue("bytes echoed back to the page", { browser.getHtml() }) {
+            awaitValue("bytes echoed back to the page", { html(browser) }) {
                 it.contains("Binary echoed 250,3,2,1 as Uint8Array")
             }
 
@@ -100,11 +100,11 @@ class SplitModeViewsTest {
             val previousUrl = browser.getUrl()
             assertEquals("true", servers.executeCommandForTest("probe.reloadPage", "[]"))
             awaitValue("a new page loaded", { browser.getUrl() }) { it != previousUrl }
-            awaitValue("saved webview state restored after reloading HTML", { browser.getHtml() }) {
+            awaitValue("saved webview state restored after reloading HTML", { html(browser) }) {
                 it.contains("Clicks: 1") && it.contains("Waiting for click")
             }
             clickSend(browser, clicks = 1)
-            awaitValue("messages working after the page reload", { browser.getHtml() }) {
+            awaitValue("messages working after the page reload", { html(browser) }) {
                 it.contains("Extension acknowledged 2") && it.contains("Clicks: 2")
             }
             awaitValue("the second panel title update", { frame.editorTabs().isTabOpened("Probe panel 2") }) { it }
@@ -118,7 +118,7 @@ class SplitModeViewsTest {
             // The same command must create a fresh page after the old browser and panel were disposed.
             tree.clickRow { it.contains("Open probe panel 1") }
             val freshBrowser = frame.jcef()
-            awaitValue("a fresh panel after closing", { if (freshBrowser.present()) freshBrowser.getHtml() else "" }) {
+            awaitValue("a fresh panel after closing", { if (freshBrowser.present()) html(freshBrowser) else "" }) {
                 it.contains("Clicks: 0") && it.contains("Waiting for click") && it.contains("Hello received")
             }
         }
@@ -132,11 +132,11 @@ class SplitModeViewsTest {
             awaitValue("the webview view's tool window in the client", { stripe.present() }) { it }
             val browser = frame.jcef()
             open("the view's page", stripe::click) { browser.present() }
-            awaitValue("the view's resource script loaded", { browser.getHtml() }) { it.contains("Clicks: 0") }
+            awaitValue("the view's resource script loaded", { html(browser) }) { it.contains("Clicks: 0") }
             assertEquals("""{"resolved":1,"clicks":0,"visibility":[]}""", viewState(servers))
 
             clickSend(browser, clicks = 0)
-            awaitValue("the view's message round trip", { browser.getHtml() }) {
+            awaitValue("the view's message round trip", { html(browser) }) {
                 it.contains("Extension acknowledged 1") && it.contains("Clicks: 1")
             }
 
@@ -149,7 +149,7 @@ class SplitModeViewsTest {
                 it == """{"resolved":1,"clicks":1,"visibility":[false,true]}"""
             }
             // The same page, not made again: what it showed is still there.
-            awaitValue("the view's page kept while hidden", { browser.getHtml() }) {
+            awaitValue("the view's page kept while hidden", { html(browser) }) {
                 it.contains("Extension acknowledged 1") && it.contains("Clicks: 1")
             }
         }
@@ -258,7 +258,7 @@ class SplitModeViewsTest {
             browser.findElement("//button[@id='send']").click()
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
             while (System.nanoTime() < deadline) {
-                if ("Clicks: ${clicks + 1}" in browser.getHtml()) return
+                if ("Clicks: ${clicks + 1}" in html(browser)) return
                 Thread.sleep(500)
             }
         }
@@ -273,5 +273,14 @@ class SplitModeViewsTest {
             Thread.sleep(500)
         }
         error("Timed out waiting for $description; last observed: $last")
+    }
+
+    /**
+     * The page's HTML, or none while it cannot be read, saying why. The driver waits 10 seconds for
+     * the page's document and then throws, which a slow runner's first load can outlast.
+     */
+    private fun html(browser: JCefUI): String = runCatching { browser.getHtml() }.getOrElse {
+        println("Could not read the page: $it")
+        ""
     }
 }
