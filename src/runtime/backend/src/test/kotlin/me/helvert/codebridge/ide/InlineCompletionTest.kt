@@ -2,10 +2,16 @@ package me.helvert.codebridge.ide
 
 import com.intellij.codeInsight.inline.completion.InlineCompletionProvider
 import com.intellij.codeInsight.inline.completion.testInlineCompletion
+import com.intellij.codeWithMe.ClientId
+import com.intellij.codeWithMe.asContextElement
 import com.intellij.openapi.components.service
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.vfs.LocalFileSystem
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import me.helvert.codebridge.exthost.ExtensionHostDocuments
@@ -101,6 +107,51 @@ class InlineCompletionTest : EditorFixture() {
         }
         awaitFreed()
         runBlocking { CodeBridgeInlineCompletionLists.getInstance(fixture.project).accepted(ACCEPTED.length, ACCEPTED.hashCode()) }
+        assertEquals(1, calls.count { it.first == EXECUTE }, calls.map { it.first }.toString())
+    }
+
+    @Test
+    fun `a remote backend selection waits for the inserting client's acknowledgement`() {
+        open()
+        fixture.testInlineCompletion {
+            withContext(ClientId("inline-test-client").asContextElement()) {
+                callInlineCompletion()
+                delay()
+                insert()
+            }
+        }
+        assertTrue(calls.none { it.first == EXECUTE }, calls.map { it.first }.toString())
+        runBlocking { CodeBridgeInlineCompletionLists.getInstance(fixture.project).accepted(ACCEPTED.length, ACCEPTED.hashCode()) }
+        awaitFreed()
+        assertEquals(1, calls.count { it.first == EXECUTE }, calls.map { it.first }.toString())
+        runBlocking { CodeBridgeInlineCompletionLists.getInstance(fixture.project).accepted(ACCEPTED.length, ACCEPTED.hashCode()) }
+        assertEquals(1, calls.count { it.first == EXECUTE }, calls.map { it.first }.toString())
+    }
+
+    @Test
+    fun `a client acknowledgement overtaking the forwarded Tab runs its command once`() {
+        open()
+        fixture.testInlineCompletion {
+            withContext(ClientId("inline-test-client").asContextElement()) {
+                callInlineCompletion()
+                delay()
+                // An earlier request offered the same text before the client restarted its session.
+                escape()
+                callInlineCompletion()
+                delay()
+                coroutineScope {
+                    // Consume the older hidden offer before the forwarded Tab selects the current
+                    // backend session. Both notifications describe the same client insertion.
+                    val acknowledgement = async(start = CoroutineStart.UNDISPATCHED) {
+                        CodeBridgeInlineCompletionLists.getInstance(fixture.project)
+                            .accepted(ACCEPTED.length, ACCEPTED.hashCode())
+                    }
+                    insert()
+                    acknowledgement.await()
+                }
+            }
+        }
+        awaitFreed()
         assertEquals(1, calls.count { it.first == EXECUTE }, calls.map { it.first }.toString())
     }
 
