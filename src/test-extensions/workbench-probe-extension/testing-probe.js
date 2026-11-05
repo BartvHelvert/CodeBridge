@@ -11,11 +11,24 @@ exports.install = context => {
     const controller = vscode.tests.createTestController('probeTests', 'Probe tests');
     context.subscriptions.push(controller);
     context.subscriptions.push(vscode.commands.registerCommand('probe.testState', () => state));
+    let childrenReady = false;
+    let pendingChildren = [];
+    const publishChildren = () => {
+        const children = pendingChildren;
+        pendingChildren = [];
+        children.forEach(([parent, item]) => parent.children.add(item));
+    };
+    context.subscriptions.push(vscode.commands.registerCommand('probe.discoverChildTests', () => {
+        childrenReady = true;
+        publishChildren();
+        return true;
+    }));
 
     const discover = document => {
         if (document.languageId !== 'codebridgeactions') return;
         const file = controller.createTestItem(document.uri.toString(), document.uri.path.split('/').pop(), document.uri);
         let suite;
+        const children = [];
         for (let line = 0; line < document.lineCount; line++) {
             const match = /^(suite|test) (\w+)/.exec(document.lineAt(line).text);
             if (!match) continue;
@@ -24,9 +37,11 @@ exports.install = context => {
             if (match[1] === 'suite') {
                 suite = item;
                 file.children.add(item);
-            } else (suite ?? file).children.add(item);
+            } else children.push([suite ?? file, item]);
         }
         controller.items.replace([file]);
+        pendingChildren = children;
+        if (childrenReady) publishChildren();
     };
     controller.resolveHandler = async item => {
         if (!item) vscode.workspace.textDocuments.forEach(discover);

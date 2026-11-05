@@ -10,6 +10,7 @@ import com.intellij.ide.starter.junit5.RemoteDevRun
 import me.helvert.codebridge.uitest.awaitProbeValue
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
+import kotlin.test.assertEquals
 
 /**
  * `vscode.tests` as the user meets it in a JetBrains Client: Run in the gutter of each test an
@@ -48,6 +49,12 @@ class SplitModeTestingTest {
 
             fun requested() = command("probe.testState")
 
+            // Publish children only after the suite was drawn, so their markers require an update
+            // rather than sharing the editor's initial highlighting pass.
+            awaitProbeValue("the suite's marker before child discovery", ::markers) {
+                it == mapOf(0 to "Run probe")
+            }
+            assertEquals("true", command("probe.discoverChildTests"))
             awaitProbeValue("a Run marker on the suite and on each test", ::markers) {
                 it == mapOf(0 to "Run probe", 1 to "Run passes", 2 to "Run fails")
             }
