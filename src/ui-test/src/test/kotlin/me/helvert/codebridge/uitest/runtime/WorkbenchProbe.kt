@@ -3,6 +3,7 @@ package me.helvert.codebridge.uitest.runtime
 import com.intellij.driver.client.Driver
 import com.intellij.driver.model.RdTarget
 import com.intellij.driver.sdk.singleProject
+import com.intellij.ide.starter.driver.engine.BackgroundRun
 import com.intellij.ide.starter.ide.IDERemDevTestContext
 import com.intellij.ide.starter.runner.Starter
 import com.intellij.tools.ide.performanceTesting.commands.CommandChain
@@ -14,7 +15,12 @@ import java.nio.file.Path
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 
-internal class WorkbenchProbe(val driver: Driver, val project: Path, private val home: Path) {
+internal class WorkbenchProbe(
+    val driver: Driver,
+    val project: Path,
+    private val home: Path,
+    private val logs: WorkbenchLogs = WorkbenchLogs(home),
+) {
     val backend = awaitProbeValue("the backend project", {
         runCatching { driver.singleProject(RdTarget.BACKEND) }.getOrNull()?.takeIf { it.isInitialized() }
     }) { it != null }!!
@@ -23,9 +29,10 @@ internal class WorkbenchProbe(val driver: Driver, val project: Path, private val
     fun command(name: String, argsJson: String): String? = servers.executeCommandForTest(name, argsJson)
 
     /** What the backend has logged so far: its `idea.log`, not the client's, which is under `frontend`. */
-    fun backendLog(): String = Files.walk(home).use { paths ->
-        paths.filter { it.fileName.toString() == "idea.log" && !home.relativize(it).startsWith("frontend") }.toList()
-    }.joinToString("\n") { it.readText() }
+    fun backendLog(): String = logs.read()
+
+    /** A scenario's files and log messages, while retaining the running IDEs. */
+    fun scenario(directory: String) = WorkbenchProbe(driver, project.resolve(directory), home, logs.snapshot())
 
     /** Fails with what the backend logged around [text], when it logged it. */
     fun assertNotLogged(text: String, failure: String) {
@@ -54,6 +61,52 @@ internal fun withWorkbenchProbe(
     extensions: List<Path> = emptyList(),
     test: WorkbenchProbe.() -> Unit,
 ) {
+    startWorkbenchProbe(name, content, settings, traced, files, open, extensions).use { it.test(test) }
+}
+
+/** Offsets belong to individual files: appending to one must not hide messages in another. */
+internal class WorkbenchLogs(private val home: Path, private val starts: Map<Path, Int> = emptyMap()) {
+    private fun files(): List<Path> = Files.walk(home).use { paths ->
+        paths.filter { file ->
+            file.fileName.toString() == "idea.log" && home.relativize(file).none { it.toString() == "frontend" }
+        }.toList()
+    }
+
+    fun snapshot() = WorkbenchLogs(home, files().associateWith { it.readText().length })
+
+    fun read(): String = files().joinToString("\n") { file ->
+        val text = file.readText()
+        text.drop(starts[file]?.takeIf { it <= text.length } ?: 0)
+    }
+}
+
+/** Owns a running pair, also usable by a class whose scenarios explicitly reset their state. */
+internal class WorkbenchSession(
+    val probe: WorkbenchProbe,
+    private val context: IDERemDevTestContext,
+    private val run: BackgroundRun,
+) : AutoCloseable {
+    fun test(test: WorkbenchProbe.() -> Unit) {
+        try {
+            probe.test()
+        } catch (error: Throwable) {
+            context.reportHostFailure(error)
+            throw error
+        }
+    }
+
+    override fun close() = run.closeIdeAndWait()
+}
+
+internal fun startWorkbenchProbe(
+    name: String,
+    content: String,
+    settings: String = """{"files.autoSave":"off"}""",
+    traced: String? = null,
+    files: Map<String, String> = emptyMap(),
+    open: String = "example.codebridgeactions",
+    extensions: List<Path> = emptyList(),
+): WorkbenchSession {
     val project = Files.createTempDirectory("codebridge-$name")
     project.resolve("example.codebridgeactions").writeText(content)
     files.forEach { (file, text) -> project.resolve(file).writeText(text) }
@@ -74,7 +127,6 @@ internal fun withWorkbenchProbe(
         context.frontendIDEContext.applyVMOptionsPatch { addSystemProperty("idea.log.trace.categories", traced) }
     }
     val run = context.runSplitIde(commands = CommandChain().waitForSmartMode(), open = open)
-    var failure: Throwable? = null
     try {
         val probe = WorkbenchProbe(run.driver, project, context.paths.testHome)
         check(run.driver.isRemDevMode)
@@ -83,24 +135,21 @@ internal fun withWorkbenchProbe(
             { runCatching { probe.command("probe.uiState") }.getOrNull() }) {
             it != null
         }
-        probe.test()
+        return WorkbenchSession(probe, context, run)
     } catch (error: Throwable) {
-        failure = error
-        runCatching {
-            val hosts = context.paths.systemDir.resolve("codebridge/hosts")
-            if (Files.isDirectory(hosts)) Files.walk(hosts).use { paths ->
-                paths.filter { it.fileName.toString() == "exthost-stdout.log" }.forEach {
-                    println("Extension host output ($it):\n${it.readText().takeLast(8_000)}")
-                }
-            }
-        }.onFailure(error::addSuppressed)
+        context.reportHostFailure(error)
+        runCatching { run.closeIdeAndWait() }.onFailure(error::addSuppressed)
         throw error
-    } finally {
-        try {
-            run.closeIdeAndWait()
-        } catch (closeError: Throwable) {
-            if (failure == null) throw closeError
-            failure.addSuppressed(closeError)
-        }
     }
+}
+
+private fun IDERemDevTestContext.reportHostFailure(error: Throwable) {
+    runCatching {
+        val hosts = paths.systemDir.resolve("codebridge/hosts")
+        if (Files.isDirectory(hosts)) Files.walk(hosts).use { paths ->
+            paths.filter { it.fileName.toString() == "exthost-stdout.log" }.forEach {
+                println("Extension host output ($it):\n${it.readText().takeLast(8_000)}")
+            }
+        }
+    }.onFailure(error::addSuppressed)
 }

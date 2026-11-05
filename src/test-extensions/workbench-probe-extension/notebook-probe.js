@@ -14,6 +14,7 @@ exports.install = context => {
     controller.supportedLanguages = ['python'];
     controller.supportsExecutionOrder = true;
     let order = 0;
+    let directory = '';
     controller.executeHandler = async cells => {
         for (const cell of cells) {
             const execution = controller.createNotebookCellExecution(cell);
@@ -44,9 +45,26 @@ exports.install = context => {
         }),
         vscode.workspace.onDidChangeNotebookDocument(event => record(event.notebook)),
         vscode.commands.registerCommand('probe.notebookState', () => state),
+        // Each scenario gets a new URI, so document caches and undo histories cannot carry over.
+        // Refuse to reset until the previous editor's close reached the extension host.
+        vscode.commands.registerCommand('probe.prepareNotebook', async (scenario, content) => {
+            // openNotebookDocument deliberately keeps documents alive after their editor closes.
+            // New URIs isolate those documents; only the previous editors must be gone.
+            if (vscode.window.visibleNotebookEditors.length) return false;
+            const root = vscode.workspace.workspaceFolders[0].uri;
+            const folder = vscode.Uri.joinPath(root, scenario);
+            await vscode.workspace.fs.createDirectory(folder);
+            await vscode.workspace.fs.writeFile(vscode.Uri.joinPath(folder, 'example.ipynb'), new TextEncoder().encode(content));
+            state.opened.length = 0;
+            state.ran.length = 0;
+            state.cells = {};
+            order = 0;
+            directory = scenario;
+            return true;
+        }),
         // Opens a notebook of the workspace as an extension does: the document, then an editor for it.
         vscode.commands.registerCommand('probe.showNotebook', async (name = 'example.ipynb') => {
-            const notebook = await vscode.workspace.openNotebookDocument(vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, name));
+            const notebook = await vscode.workspace.openNotebookDocument(vscode.Uri.joinPath(vscode.workspace.workspaceFolders[0].uri, directory, name));
             const editor = await vscode.window.showNotebookDocument(notebook);
             return editor.notebook.cellCount;
         }),

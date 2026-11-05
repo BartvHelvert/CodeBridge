@@ -102,6 +102,11 @@ Without CodeBridge a project's `.vscode/settings.json` is not read, so a runtime
 needs in the backend's user settings (`writeUserSettings`). Run one plugin's tests with, for example,
 `:ui-test:test --tests 'me.helvert.codebridge.uitest.runtime.*'`.
 
+The notebook tests share one backend/client pair per class. Each scenario closes the previous
+editors, resets the probe's recorded state and execution order, and uses a new notebook URI to
+keep document caches and undo history separate. A failed scenario discards the pair; the next test
+starts fresh. JUnit still reports each scenario separately, with IDE logs shared for the class.
+
 `SplitModeTextMateTest` installs the [syntax-only grammar fixture](textmate-extension/README.md)
 in the backend store and checks keyword and string colours in the client, then disable, enable
 and uninstall in the same open editor. Syntax colours arrive as range markup even though the
