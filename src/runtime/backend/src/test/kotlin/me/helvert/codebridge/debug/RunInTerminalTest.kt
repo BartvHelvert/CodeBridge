@@ -14,6 +14,9 @@ import java.io.OutputStream
 import java.io.PipedInputStream
 import java.io.PipedOutputStream
 import java.util.concurrent.TimeUnit
+import kotlin.io.path.createFile
+import kotlin.io.path.createTempDirectory
+import kotlin.io.path.exists
 import kotlin.concurrent.thread
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -77,15 +80,29 @@ class RunInTerminalTest {
     fun `a terminal that is slow to say its first word is not taken as quiet`() {
         val windows = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
         val written = StringBuffer()
+        val directory = createTempDirectory("run-in-terminal")
         RunInTerminal { text, _ -> written.append(text) }.use { terminal ->
-            // Silent for a second, as `cmd` starting on a slow runner's pseudo-terminal was, then lingers.
+            // Says it has started, stays silent until told to speak, then lingers: silent for as long
+            // as the test says, not for as long as a runner takes to start the shell.
             runBlocking { terminal.run(
                 RunInTerminalRequestArguments(
-                    args = if (windows) listOf("cmd.exe", "/d", "/c", "ping -n 2 127.0.0.1 >nul && echo late-words && ping -n 6 127.0.0.1 >nul")
-                    else listOf("/bin/sh", "-c", "sleep 1 && echo late-words && sleep 5")
+                    cwd = directory.toString(),
+                    args = if (windows) listOf(
+                        "powershell.exe", "-NoProfile", "-NonInteractive", "-Command",
+                        "New-Item started | Out-Null; while (-not (Test-Path speak)) { Start-Sleep -Milliseconds 50 }; 'late-words'; Start-Sleep 5"
+                    )
+                    else listOf("/bin/sh", "-c", "touch started; while [ ! -e speak ]; do sleep 0.05; done; echo late-words; sleep 5")
                 )
             ) }
-            runBlocking { withTimeout(10.seconds) { terminal.finished().await() } }
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(20)
+            while (System.nanoTime() < deadline && !directory.resolve("started").exists()) Thread.sleep(50)
+            assertTrue(directory.resolve("started").exists(), "The program started")
+            val finished = terminal.finished()
+            // Twice as long as the quiet that ends a terminal which has spoken, well within the grace.
+            Thread.sleep(600)
+            assertTrue(!finished.isCompleted, "Silence before the first word is not taken as quiet")
+            directory.resolve("speak").createFile()
+            runBlocking { withTimeout(10.seconds) { finished.await() } }
             assertTrue(written.contains("late-words"), "Read before the session ends: '$written'")
         }
     }
