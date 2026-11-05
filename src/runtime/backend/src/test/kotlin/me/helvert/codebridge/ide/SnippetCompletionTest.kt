@@ -9,6 +9,7 @@ import com.intellij.openapi.extensions.DefaultPluginDescriptor
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.extensions.PluginId
 import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.testFramework.DumbModeTestUtils
 import kotlinx.serialization.json.*
 import me.helvert.codebridge.extensions.ExtensionInstallationService
 import me.helvert.codebridge.language.CodeBridgeSnippetCompletion
@@ -78,6 +79,19 @@ class SnippetCompletionTest : EditorFixture() {
         fixture.completeBasic()
 
         assertEquals(listOf("forr"), fixture.lookupElementStrings)
+    }
+
+    @Test
+    fun `a snippet is offered while the project is indexed`() = onEdt {
+        open("fo", "main.snip.txt")
+
+        // Installing an extension changes file types, which has the project indexed again.
+        DumbModeTestUtils.runInDumbModeSynchronously(fixture.project) {
+            fixture.completeBasic()
+
+            // Looked at before the indexing ends, which asks for the lookup again.
+            assertEquals(listOf("forr"), fixture.lookupElementStrings)
+        }
     }
 
     @Test

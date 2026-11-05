@@ -9,6 +9,7 @@ import com.intellij.codeInsight.lookup.LookupElement
 import com.intellij.codeInsight.lookup.LookupElementBuilder
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.components.service
+import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.util.text.StringUtil
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
@@ -27,8 +28,11 @@ import me.helvert.codebridge.exthost.protocol.payload.CompletionItem
  * Where they rank follows `editor.snippetSuggestions` -- `top`, `bottom`, `inline` among the rest,
  * or `none` -- and `editor.suggest.showSnippets` turns them off, as in VS Code. Both are read from the
  * workspace settings the extension host has, so they apply once it is running.
+ *
+ * Snippets are data in their packages, needing no index, so they are offered while the project is
+ * indexed too -- which installing an extension starts, by changing file types.
  */
-internal class CodeBridgeSnippetCompletion : CompletionContributor() {
+internal class CodeBridgeSnippetCompletion : CompletionContributor(), DumbAware {
 
     override fun fillCompletionVariants(parameters: CompletionParameters, result: CompletionResultSet) {
         if (parameters.completionType != CompletionType.BASIC) return
