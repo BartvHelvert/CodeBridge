@@ -14,8 +14,9 @@ import com.intellij.openapi.editor.Editor
  * A split-mode client inserts the suggestion itself and forwards the Tab, which the backend runs
  * on its own copy of the session. The client's request for the next suggestion can reach the
  * backend first and end that copy, and the Tab then accepts nothing there. Registered for the
- * frontend only; the backend matches the document against what each item would have left, and
- * runs a command at most once however it hears of it.
+ * frontend only; the backend matches the document against what each item would have left. For a
+ * remote editor this acknowledgement owns command execution; its forwarded Tab only retains the
+ * selected offer until the acknowledgement arrives.
  */
 internal class CodeBridgeInlineCompletionAcceptance : InlineCompletionInstallListener {
 
