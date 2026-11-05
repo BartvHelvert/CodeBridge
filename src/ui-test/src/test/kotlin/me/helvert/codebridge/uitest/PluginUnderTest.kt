@@ -108,8 +108,15 @@ internal fun IDERemDevTestContext.install(installed: Installed) {
     // The driver's robot posts mouse and key events into IdeEventQueue instead of moving the OS
     // cursor, so a run does not take over the developer's mouse and keyboard. The UI is driven in
     // the client; the backend gets it too in case a test drives backend UI.
-    applyVMOptionsPatch { addSystemProperty(INPUT_EVENTS_ROBOT, true) }
-    frontendIDEContext.applyVMOptionsPatch { addSystemProperty(INPUT_EVENTS_ROBOT, true) }
+    applyVMOptionsPatch {
+        addSystemProperty(INPUT_EVENTS_ROBOT, true)
+        addSystemProperty("rdct.wire.timeout.pings", 60)
+    }
+    frontendIDEContext.applyVMOptionsPatch {
+        addSystemProperty(INPUT_EVENTS_ROBOT, true)
+        // Busy CI startup can pause a peer beyond the default 15-second heartbeat deadline.
+        addSystemProperty("rdct.wire.timeout.pings", 60)
+    }
 }
 
 /** A plugin's directory in a test sandbox, which the Gradle task names in [property]. */
