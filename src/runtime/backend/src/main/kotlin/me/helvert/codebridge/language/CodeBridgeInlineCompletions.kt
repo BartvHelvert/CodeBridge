@@ -7,6 +7,7 @@ import com.intellij.codeInsight.inline.completion.elements.InlineCompletionSkipT
 import com.intellij.codeInsight.inline.completion.session.InlineCompletionSession
 import com.intellij.codeInsight.inline.completion.suggestion.InlineCompletionSuggestion
 import com.intellij.codeInsight.inline.completion.suggestion.InlineCompletionVariant
+import com.intellij.codeWithMe.ClientId
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.application.ModalityState
 import com.intellij.openapi.application.asContextElement
@@ -237,6 +238,7 @@ internal class CodeBridgeInlineCompletionLists(private val project: Project, pri
         offered: List<CodeBridgeInlineCompletionProvider.Offered>
     ) {
         val holder = editor as? UserDataHolderEx ?: return free(answers)
+        holder.putUserData(CLIENT_INSERTS, ClientId.currentOrNull?.let { it != ClientId.localId } == true)
         listen(editor, holder)
         holder.putUserDataIfAbsent(HELD, ConcurrentHashMap.newKeySet()) += answers.map { Held(it.handle, it.answer.id) }
         holder.putUserData(OFFERED_IN, offered.filter { it.item.command != null })
@@ -319,14 +321,17 @@ internal class CodeBridgeInlineCompletionLists(private val project: Project, pri
             session?.takeIf { selected && it.provider.id == CodeBridgeInlineCompletionProvider.ID }
                 ?.let(::offered)
         val command = accepted?.item?.command
-        if (command != null) {
+        if (command != null && editor.getUserData(CLIENT_INSERTS) != true) {
             // What was left in this document before can no longer be what the client inserts.
             left.filter { it.document == editor.document }.forEach { if (left.remove(it)) release(it.lists) }
             runAfterInsertion(editor.document, command) { release(lists) }
             return
         }
-        if (selected || offered.isEmpty() || editor.isDisposed) return release(lists)
-        val hidden = Left(editor, offered, lists)
+        // A remote client inserts the text and acknowledges it itself. Its forwarded Tab can also
+        // select the backend session, so that notification must not execute a second command.
+        val available = if (selected) listOfNotNull(accepted) else offered
+        if (available.isEmpty() || editor.isDisposed) return release(lists)
+        val hidden = Left(editor, available, lists)
         left += hidden
         scope.launch {
             delay(LEFT_MILLIS.milliseconds)
@@ -397,6 +402,7 @@ internal class CodeBridgeInlineCompletionLists(private val project: Project, pri
             Key.create("codebridge.inlineCompletion.offeredIn")
         private val LISTENED: Key<Any> = Key.create("codebridge.inlineCompletion.listened")
         private val RELEASED: Key<Boolean> = Key.create("codebridge.inlineCompletion.released")
+        private val CLIENT_INSERTS: Key<Boolean> = Key.create("codebridge.inlineCompletion.clientInserts")
 
         fun getInstance(project: Project): CodeBridgeInlineCompletionLists = project.service()
     }
