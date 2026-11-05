@@ -1,13 +1,13 @@
 import org.gradle.api.DefaultTask
 import org.gradle.api.GradleException
 import org.gradle.api.file.ArchiveOperations
+import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
-import org.gradle.api.file.RegularFileProperty
-import org.gradle.api.provider.Property
 import org.gradle.api.tasks.CacheableTask
-import org.gradle.api.tasks.Input
-import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.PathSensitive
+import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 import java.util.regex.Pattern
 import javax.inject.Inject
@@ -25,19 +25,15 @@ import javax.inject.Inject
  */
 @CacheableTask
 abstract class GenerateVsCodeTheme : DefaultTask() {
-    @get:Input abstract val url: Property<String>
-    @get:Input abstract val sha256: Property<String>
-    /** Where the web package is kept; [url] and [sha256] say what is in it. */
-    @get:Internal abstract val archive: RegularFileProperty
+    /** The web package, as `:runtime` downloads it: one task fetching it, so none replaces it while another reads it. */
+    @get:InputFiles @get:PathSensitive(PathSensitivity.NONE) abstract val archive: ConfigurableFileCollection
     @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
 
     @get:Inject abstract val archives: ArchiveOperations
 
     @TaskAction
     fun generate() {
-        val file = archive.get().asFile
-        downloadVerified(url.get(), sha256.get(), file)
-        val bundle = archives.tarTree(file).matching { include(BUNDLE) }.singleFile.readText()
+        val bundle = archives.tarTree(archive.singleFile).matching { include(BUNDLE) }.singleFile.readText()
         val names = namesIn(bundle)
         val colors = registrations(bundle, registering(bundle, "registerColor"), names)
         val sizes = registrations(bundle, registering(bundle, "registerSize"), names)

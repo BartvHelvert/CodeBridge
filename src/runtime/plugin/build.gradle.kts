@@ -137,6 +137,11 @@ val downloadWorkbenchExtensions = tasks.register<DownloadVerified>("downloadWork
     archive = vscodiumDownloads.file(VsCodium.webAsset)
 }
 
+/** The web package for `webview.frontend` too, which reads VS Code's theme defaults from it. */
+configurations.consumable("vscodiumWebPackage") {
+    outgoing.artifact(downloadWorkbenchExtensions.flatMap { it.archive })
+}
+
 /**
  * The licences of what the runtime is made of, which its archive does not carry: VS Code's own and
  * its third-party notices, VSCodium's, and Node's for `node`. The bundled `node_modules` and built-in

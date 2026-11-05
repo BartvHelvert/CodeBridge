@@ -23,12 +23,14 @@ dependencies {
 
 tasks.test { useJUnitPlatform() }
 
+/** VSCodium's web package, from `:runtime`, which downloads it for its workbench's built-in extensions. */
+val vscodiumWebPackage = configurations.dependencyScope("vscodiumWebPackage")
+val vscodiumWebPackageFiles = configurations.resolvable("vscodiumWebPackageFiles") { extendsFrom(vscodiumWebPackage.get()) }
+dependencies { vscodiumWebPackage(project(path = ":runtime", configuration = "vscodiumWebPackage")) }
+
 /** VS Code's theme colors and sizes with their defaults, which every page gets: see `VsCodeThemeDefaults`. */
-val sharedCacheDirectory: File by rootProject.extra
 val generateVsCodeTheme = tasks.register<GenerateVsCodeTheme>("generateVsCodeTheme") {
-    url = VsCodium.url(VsCodium.webAsset)
-    sha256 = VsCodium.webPackage.second
-    archive = layout.projectDirectory.file(VsCodium.downloads(sharedCacheDirectory).resolve(VsCodium.webAsset).path)
+    archive.from(vscodiumWebPackageFiles)
     outputDirectory = layout.buildDirectory.dir("generated/vscode-theme")
 }
 sourceSets.main { resources.srcDir(generateVsCodeTheme) }
