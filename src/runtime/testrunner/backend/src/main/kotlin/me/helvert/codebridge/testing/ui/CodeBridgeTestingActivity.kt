@@ -35,6 +35,8 @@ internal class CodeBridgeTestingUi(private val project: Project, private val sco
         val testing = HostedTesting.getInstance(project)
         testing.setRunOpener({ run -> CodeBridgeTestRuns.show(project, run) }, this)
         testing.addChangeListener(::changed, this)
+        // Discovery may finish before this startup activity registers its listener.
+        changed(emptySet())
     }
 
     /**
