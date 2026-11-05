@@ -15,7 +15,7 @@ exports.install = context => {
     const discover = document => {
         if (document.languageId !== 'codebridgeactions') return;
         const file = controller.createTestItem(document.uri.toString(), document.uri.path.split('/').pop(), document.uri);
-        let suite;
+        let suite; const children = [];
         for (let line = 0; line < document.lineCount; line++) {
             const match = /^(suite|test) (\w+)/.exec(document.lineAt(line).text);
             if (!match) continue;
@@ -24,9 +24,10 @@ exports.install = context => {
             if (match[1] === 'suite') {
                 suite = item;
                 file.children.add(item);
-            } else (suite ?? file).children.add(item);
+            } else children.push([suite ?? file, item]);
         }
         controller.items.replace([file]);
+        setTimeout(() => children.forEach(([parent, item]) => parent.children.add(item)), 500);
     };
     controller.resolveHandler = async item => {
         if (!item) vscode.workspace.textDocuments.forEach(discover);

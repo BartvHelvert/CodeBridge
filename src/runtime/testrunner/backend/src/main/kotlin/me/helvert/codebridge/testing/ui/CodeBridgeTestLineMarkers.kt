@@ -39,6 +39,7 @@ class CodeBridgeTestLineMarkers : LineMarkerProvider {
         val testing = HostedTesting.getInstance(project)
         val key = runCatching { UriComponents.key(file.toNioPath()) }.getOrNull() ?: return
         val tests = testing.itemsIn(key).filter { it.range != null }
+        com.intellij.openapi.diagnostic.Logger.getInstance(CodeBridgeTestLineMarkers::class.java).info("GUTTER TRACE tests=${tests.map { it.label to it.range?.startLineNumber }} elements=${elements.map { it.textRange }}")
         if (tests.isEmpty()) return
         val document = PsiDocumentManager.getInstance(project).getDocument(psiFile) ?: return
 
