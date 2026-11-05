@@ -1,5 +1,7 @@
 package me.helvert.codebridge.uitest.runtime
 
+import com.intellij.driver.model.OnDispatcher
+import com.intellij.driver.model.RdTarget
 import com.intellij.driver.sdk.invokeAction
 import com.intellij.driver.sdk.ui.components.common.codeEditor
 import com.intellij.driver.sdk.ui.components.common.editor.completionList
@@ -51,6 +53,16 @@ class SplitModeSnippetsTest {
 
             editor.goToPosition(2, 1)
             editor.keyboard { typeText("probeb") }
+            // Completion runs on the backend, which gives up on a request whose typing it has not yet
+            // received ("Editor did not reach the expected caret/document version"), and the lookup
+            // closes with nothing asking again. On CI the extension host's startup once held the
+            // backend that long, so the typing has to reach it first.
+            awaitProbeValue("the typed prefix on the backend", {
+                driver.withContext(OnDispatcher.EDT) {
+                    driver.service(SplitModeWorkbenchTest.EditorFactoryRef::class, RdTarget.BACKEND).getAllEditors()
+                        .map { it.getDocument().getText() }
+                }
+            }) { "${CONTENT}probeb" in it }
             driver.invokeAction("CodeCompletion", component = editor.component)
             // Found again each time: a lookup asked again as more is typed is another list. The item
             // is drawn as its label split where it matched, so it is told by its raw text, and it is
