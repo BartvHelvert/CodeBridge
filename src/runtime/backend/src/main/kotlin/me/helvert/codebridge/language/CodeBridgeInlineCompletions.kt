@@ -209,7 +209,8 @@ internal class CodeBridgeInlineCompletionProvider : DebouncedInlineCompletionPro
  * that request reaches the backend before the Tab, it ends the backend's session as typed over,
  * and the Tab finds nothing to accept. So what a suggestion hidden that way offered is kept a little
  * while, and the client says which item it inserted ([accepted], from
- * `CodeBridgeInlineCompletionAcceptance`). Whichever way it is heard, a command runs once.
+ * `CodeBridgeInlineCompletionAcceptance`). For remote editors only that acknowledgement executes
+ * the command: the forwarded Tab may select a backend session as well, in either order.
  */
 @Service(Service.Level.PROJECT)
 internal class CodeBridgeInlineCompletionLists(private val project: Project, private val scope: CoroutineScope) {
@@ -239,6 +240,7 @@ internal class CodeBridgeInlineCompletionLists(private val project: Project, pri
     ) {
         val holder = editor as? UserDataHolderEx ?: return free(answers)
         holder.putUserData(CLIENT_INSERTS, ClientId.currentOrNull?.let { it != ClientId.localId } == true)
+        LOG.info("INLINE TRACE client=${ClientId.currentOrNull} clientInserts=${editor.getUserData(CLIENT_INSERTS)}")
         listen(editor, holder)
         holder.putUserDataIfAbsent(HELD, ConcurrentHashMap.newKeySet()) += answers.map { Held(it.handle, it.answer.id) }
         holder.putUserData(OFFERED_IN, offered.filter { it.item.command != null })
@@ -251,7 +253,7 @@ internal class CodeBridgeInlineCompletionLists(private val project: Project, pri
     /**
      * Runs the command of the item a client inserted, which left its document [length] characters
      * long, hashing to [hash]. Waits a little for the backend to hide the suggestion, which this
-     * call can overtake. Nothing, when it was hidden as accepted: that ran the command already.
+     * call can overtake. A local editor's accepted session already ran its command and left no offer.
      */
     suspend fun accepted(length: Int, hash: Int) {
         val (hidden, offered) = withTimeoutOrNull(SYNC_MILLIS.milliseconds) {
@@ -321,6 +323,7 @@ internal class CodeBridgeInlineCompletionLists(private val project: Project, pri
             session?.takeIf { selected && it.provider.id == CodeBridgeInlineCompletionProvider.ID }
                 ?.let(::offered)
         val command = accepted?.item?.command
+        LOG.info("INLINE TRACE selected=$selected command=${command != null} clientInserts=${editor.getUserData(CLIENT_INSERTS)}")
         if (command != null && editor.getUserData(CLIENT_INSERTS) != true) {
             // What was left in this document before can no longer be what the client inserts.
             left.filter { it.document == editor.document }.forEach { if (left.remove(it)) release(it.lists) }
