@@ -77,7 +77,18 @@ class SplitModeRuntimeTest {
             // are read, and the first is what the debugger's actions are invoked from.
             val trees = frame.xx("//div[@class='XDebuggerTree']", JTreeUiComponent::class.java)
             val variables = frame.tree("(//div[@class='XDebuggerTree'])[1]")
-            fun variableRows() = trees.list().flatMap { it.collectExpandedPathsAsStrings() }
+            var retentionChecked = false
+            fun variableRows() = driver.withContext {
+                trees.list().flatMap { tree ->
+                    if (!retentionChecked) {
+                        // Create the cached fixture, then collect between its creation and reuse.
+                        tree.collectExpandedPathsAsStrings()
+                        driver.utility(GarbageCollectorRef::class, RdTarget.FRONTEND).gc()
+                        retentionChecked = true
+                    }
+                    tree.collectExpandedPathsAsStrings()
+                }
+            }
             awaitProbeValue("the stopped session's variable in the client", ::variableRows) { rows ->
                 rows.any { it.contains("probeValue") && it.contains("41") }
             }
@@ -97,6 +108,11 @@ class SplitModeRuntimeTest {
             awaitProbeValue("the adapter session stopped", { stateContains("debugStopped", 1) }) { it }
             Unit
         }
+
+    @Remote("java.lang.System")
+    interface GarbageCollectorRef {
+        fun gc()
+    }
 
     @Remote("com.intellij.execution.ui.RunContentManager")
     interface RunContentManagerRef {
