@@ -237,6 +237,7 @@ internal class CodeBridgeInlineCompletionLists(private val project: Project, pri
         offered: List<CodeBridgeInlineCompletionProvider.Offered>
     ) {
         val holder = editor as? UserDataHolderEx ?: return free(answers)
+        LOG.info("INLINE TRACE hold client=${com.intellij.codeWithMe.ClientId.currentOrNull} local=${com.intellij.codeWithMe.ClientId.localId} stamp=${editor.document.modificationStamp} offers=${offered.map { it.length to it.hash }}")
         listen(editor, holder)
         holder.putUserDataIfAbsent(HELD, ConcurrentHashMap.newKeySet()) += answers.map { Held(it.handle, it.answer.id) }
         holder.putUserData(OFFERED_IN, offered.filter { it.item.command != null })
@@ -260,6 +261,7 @@ internal class CodeBridgeInlineCompletionLists(private val project: Project, pri
             }
             found
         } ?: return
+        LOG.info("INLINE TRACE client accepted stamp=${hidden.document.modificationStamp} target=$length,$hash")
         val command = offered.item.command ?: return release(hidden.lists)
         withTimeoutOrNull(SYNC_MILLIS.milliseconds) {
             while (!readAction { hidden.document.textLength == length && hidden.document.text.hashCode() == hash }) {
@@ -319,6 +321,7 @@ internal class CodeBridgeInlineCompletionLists(private val project: Project, pri
             session?.takeIf { selected && it.provider.id == CodeBridgeInlineCompletionProvider.ID }
                 ?.let(::offered)
         val command = accepted?.item?.command
+        LOG.info("INLINE TRACE hide selected=$selected command=${command != null} client=${com.intellij.codeWithMe.ClientId.currentOrNull} local=${com.intellij.codeWithMe.ClientId.localId} stamp=${editor.document.modificationStamp}")
         if (command != null) {
             // What was left in this document before can no longer be what the client inserts.
             left.filter { it.document == editor.document }.forEach { if (left.remove(it)) release(it.lists) }
