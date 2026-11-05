@@ -155,7 +155,10 @@ class SplitModeNotebookTest {
 
             fun animated(): Int = runCatching { frame.xx("$notebook//div[@class='RunningOutline']").list().size }.getOrDefault(-1)
 
-            val cell = frame.xx("$notebook//div[@class='EditorComponentImpl']", JEditorUiComponent::class.java).list().first()
+            // Shown for the extension is not yet drawn in the client.
+            val cell = awaitProbeValue("the notebook's cell in the client", {
+                runCatching { frame.xx("$notebook//div[@class='EditorComponentImpl']", JEditorUiComponent::class.java).list().firstOrNull() }.getOrNull()
+            }) { it != null }!!
             awaitProbeValue("the cell, not running, its outline still", ::animated) { it == 0 }
             cell.click()
             cell.keyboard { hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_ENTER) }
