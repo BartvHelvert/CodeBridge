@@ -2,6 +2,7 @@ package me.helvert.codebridge.uitest.runtime
 
 import com.intellij.driver.client.Remote
 import com.intellij.driver.model.OnDispatcher
+import com.intellij.driver.sdk.invokeAction
 import com.intellij.driver.sdk.ui.components.UiComponent
 import com.intellij.driver.sdk.ui.components.common.JEditorUiComponent
 import com.intellij.driver.sdk.ui.components.common.editor.completionList
@@ -11,9 +12,15 @@ import com.intellij.driver.sdk.ui.components.common.ideFrame
 import com.intellij.driver.sdk.ui.components.elements.JTextFieldUI
 import com.intellij.driver.sdk.ui.components.elements.accessibleList
 import com.intellij.ide.starter.junit5.RemoteDevRun
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
 import me.helvert.codebridge.uitest.awaitProbeValue
+import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Test
+import org.junit.jupiter.api.TestInstance
 import org.junit.jupiter.api.extension.ExtendWith
+import org.junit.jupiter.api.parallel.Execution
+import org.junit.jupiter.api.parallel.ExecutionMode
 import java.awt.Point
 import java.awt.event.KeyEvent
 import java.time.Duration
@@ -28,12 +35,76 @@ import kotlin.io.path.writeText
  * Cell edits undo as in VS Code: the notebook's own outside a cell's editor, typing inside one.
  */
 @ExtendWith(RemoteDevRun::class)
+@TestInstance(TestInstance.Lifecycle.PER_CLASS)
+@Execution(ExecutionMode.SAME_THREAD)
 @Suppress("OPT_IN_USAGE") // The keys are what is tested: cells bind run and undo to them, apart from the IDE's actions.
 class SplitModeNotebookTest {
+    private var session: WorkbenchSession? = null
+
+    @AfterAll
+    fun closeSession() {
+        val previous = session
+        session = null
+        previous?.close()
+    }
+
+    /** Same installation and settings for every notebook; files and host state are fresh each time. */
+    private fun withNotebookProbe(name: String, notebook: String, test: WorkbenchProbe.() -> Unit) {
+        val running = session ?: startWorkbenchProbe("split-mode-notebooks", "").also { session = it }
+        try {
+            running.test {
+                driver.invokeAction("CloseAllEditors")
+                val args = JsonArray(listOf(JsonPrimitive(name), JsonPrimitive(notebook))).toString()
+                awaitProbeValue("the previous notebook closed and $name prepared", { command("probe.prepareNotebook", args) }) { it == "true" }
+                println("Notebook scenario: $name")
+                scenario(name).test()
+            }
+        } catch (error: Throwable) {
+            // A failed scenario must not leave the next test with a damaged session or modal dialog.
+            runCatching { closeSession() }.onFailure(error::addSuppressed)
+            throw error
+        }
+    }
+
+    @Test
+    fun `a new scenario gets fresh notebook contents and execution state`() {
+        withNotebookProbe("split-mode-notebook-isolation-first", NOTEBOOK.replace("hello", "first")) {
+            check(command("probe.showNotebook") == "1")
+            val frame = driver.ideFrame { }
+            val cell = awaitProbeValue("the first scenario's cell", {
+                frame.xx("//div[@accessiblename='Notebook example.ipynb']//div[@class='EditorComponentImpl']", JEditorUiComponent::class.java).list()
+            }) { it.size == 1 }.single()
+            cell.click()
+            cell.keyboard { hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_ENTER) }
+            awaitProbeValue("the first scenario's notebook recorded", { command("probe.notebookState") }) {
+                it?.contains(""""ran":["first"]""") == true && it.contains(""""example.ipynb":["first"]""")
+            }
+            awaitProbeValue("the first scenario's execution finished", {
+                frame.xx("//div[@accessiblename='Notebook example.ipynb']//div[@class='ActionButton' and @accessiblename='Run Cell']").list().size
+            }) { it == 1 }
+            Unit
+        }
+        withNotebookProbe("split-mode-notebook-isolation-second", NOTEBOOK) {
+            check(command("probe.notebookState") == """{"opened":[],"ran":[],"cells":{}}""")
+            check(command("probe.showNotebook") == "1")
+            val frame = driver.ideFrame { }
+            awaitProbeValue("a new notebook with the second scenario's contents", {
+                runCatching {
+                    frame.xx("//div[@accessiblename='Notebook example.ipynb']//div[@class='EditorComponentImpl']", JEditorUiComponent::class.java)
+                        .list().map { it.text }
+                }.getOrDefault(emptyList())
+            }) { it == listOf("hello") }
+            awaitProbeValue("only the second scenario recorded", { command("probe.notebookState") }) {
+                it == """{"opened":["example.ipynb"],"ran":[],"cells":{"example.ipynb":["hello"]}}"""
+            }
+            Unit
+        }
+    }
+
     @Test
     @Suppress("UnusedExpression") // The trailing Unit keeps the last probe's value from becoming the result.
     fun `a notebook opens in the client, runs with an extension's kernel and saves its output`() =
-        withWorkbenchProbe("split-mode-notebook", "", files = mapOf("example.ipynb" to NOTEBOOK)) {
+        withNotebookProbe("split-mode-notebook", NOTEBOOK) {
             val frame = driver.ideFrame { }
             // As Jupyter opens one: the client is asked to show the file, and shows it as a notebook.
             awaitProbeValue("the notebook shown for the extension", { runCatching { command("probe.showNotebook") }.getOrNull() }) { it == "1" }
@@ -116,7 +187,7 @@ class SplitModeNotebookTest {
 
     @Test
     fun `a notebook opens as its cells without its text showing first`() =
-        withWorkbenchProbe("split-mode-notebook-no-text", "", files = mapOf("example.ipynb" to NOTEBOOK)) {
+        withNotebookProbe("split-mode-notebook-no-text", NOTEBOOK) {
             val frame = driver.ideFrame { }
             val notebook = "//div[@accessiblename='Notebook example.ipynb']"
 
@@ -149,7 +220,7 @@ class SplitModeNotebookTest {
     @Test
     @Suppress("UnusedExpression")
     fun `a running cell's outline is animated until it is stopped`() =
-        withWorkbenchProbe("split-mode-notebook-running", "", files = mapOf("example.ipynb" to WAITING)) {
+        withNotebookProbe("split-mode-notebook-running", WAITING) {
             val frame = driver.ideFrame { }
             awaitProbeValue("the notebook shown for the extension", { runCatching { command("probe.showNotebook") }.getOrNull() }) { it == "1" }
             val notebook = "//div[@accessiblename='Notebook example.ipynb']"
@@ -189,7 +260,7 @@ class SplitModeNotebookTest {
     @Test
     @Suppress("UnusedExpression")
     fun `a deleted cell comes back with undo, while undo in a cell undoes its typing`() =
-        withWorkbenchProbe("split-mode-notebook-undo", "", files = mapOf("example.ipynb" to TWO_CELLS)) {
+        withNotebookProbe("split-mode-notebook-undo", TWO_CELLS) {
             val frame = driver.ideFrame { }
             awaitProbeValue("the notebook shown for the extension", { runCatching { command("probe.showNotebook") }.getOrNull() }) { it == "2" }
             val notebook = "//div[@accessiblename='Notebook example.ipynb']"
@@ -256,7 +327,7 @@ class SplitModeNotebookTest {
     @Test
     @Suppress("UnusedExpression")
     fun `the strip between cells adds a code or markdown cell there`() =
-        withWorkbenchProbe("split-mode-notebook-insert", "", files = mapOf("example.ipynb" to TWO_CELLS)) {
+        withNotebookProbe("split-mode-notebook-insert", TWO_CELLS) {
             val frame = driver.ideFrame { }
             awaitProbeValue("the notebook shown for the extension", { runCatching { command("probe.showNotebook") }.getOrNull() }) { it == "2" }
             val notebook = "//div[@accessiblename='Notebook example.ipynb']"
@@ -316,7 +387,7 @@ class SplitModeNotebookTest {
     @Test
     @Suppress("UnusedExpression")
     fun `cells dragged by the strip left of them move, or with Ctrl are copied, to where they are dropped`() =
-        withWorkbenchProbe("split-mode-notebook-drag", "", files = mapOf("example.ipynb" to THREE_TALL_CELLS)) {
+        withNotebookProbe("split-mode-notebook-drag", THREE_TALL_CELLS) {
             val frame = driver.ideFrame { }
             awaitProbeValue("the notebook shown for the extension", { runCatching { command("probe.showNotebook") }.getOrNull() }) { it == "3" }
             val notebook = "//div[@accessiblename='Notebook example.ipynb']"
@@ -408,7 +479,7 @@ class SplitModeNotebookTest {
     @Test
     @Suppress("UnusedExpression")
     fun `a code cell's toolbar runs the cells above it, or it and those below`() =
-        withWorkbenchProbe("split-mode-notebook-run-around", "", files = mapOf("example.ipynb" to TWO_CELLS)) {
+        withNotebookProbe("split-mode-notebook-run-around", TWO_CELLS) {
             val frame = driver.ideFrame { }
             awaitProbeValue("the notebook shown for the extension", { runCatching { command("probe.showNotebook") }.getOrNull() }) { it == "2" }
             val notebook = "//div[@accessiblename='Notebook example.ipynb']"
@@ -443,7 +514,7 @@ class SplitModeNotebookTest {
     @Test
     @Suppress("UnusedExpression")
     fun `a cell's menu copies, pastes, joins and changes cells, as VS Code's does`() =
-        withWorkbenchProbe("split-mode-notebook-menu", "", files = mapOf("example.ipynb" to TWO_CELLS)) {
+        withNotebookProbe("split-mode-notebook-menu", TWO_CELLS) {
             val frame = driver.ideFrame { }
             awaitProbeValue("the notebook shown for the extension", { runCatching { command("probe.showNotebook") }.getOrNull() }) { it == "2" }
             val notebook = "//div[@accessiblename='Notebook example.ipynb']"
@@ -522,7 +593,7 @@ class SplitModeNotebookTest {
     @Test
     @Suppress("UnusedExpression")
     fun `a markdown cell shows rendered, and is edited in place`() =
-        withWorkbenchProbe("split-mode-notebook-markdown", "", files = mapOf("example.ipynb" to MARKDOWN)) {
+        withNotebookProbe("split-mode-notebook-markdown", MARKDOWN) {
             val frame = driver.ideFrame { }
             awaitProbeValue("the notebook shown for the extension", { runCatching { command("probe.showNotebook") }.getOrNull() }) { it == "2" }
             val notebook = "//div[@accessiblename='Notebook example.ipynb']"
@@ -587,7 +658,7 @@ class SplitModeNotebookTest {
     @Test
     @Suppress("UnusedExpression")
     fun `a code cell has its extension's definitions, hovers, completions and problems`() =
-        withWorkbenchProbe("split-mode-notebook-language", "", files = mapOf("example.ipynb" to LANGUAGE)) {
+        withNotebookProbe("split-mode-notebook-language", LANGUAGE) {
             val frame = driver.ideFrame { }
             awaitProbeValue("the notebook shown for the extension", { runCatching { command("probe.showNotebook") }.getOrNull() }) { it == "2" }
             val notebook = "//div[@accessiblename='Notebook example.ipynb']"
@@ -659,7 +730,7 @@ class SplitModeNotebookTest {
     @Test
     @Suppress("UnusedExpression")
     fun `an HTML output is drawn as HTML, in the IDE's browser when it has scripts`() =
-        withWorkbenchProbe("split-mode-notebook-html", "", files = mapOf("example.ipynb" to HTML)) {
+        withNotebookProbe("split-mode-notebook-html", HTML) {
             val frame = driver.ideFrame { }
             awaitProbeValue("the notebook shown for the extension", { runCatching { command("probe.showNotebook") }.getOrNull() }) { it == "2" }
             val notebook = "//div[@accessiblename='Notebook example.ipynb']"
@@ -683,7 +754,7 @@ class SplitModeNotebookTest {
     @Test
     @Suppress("UnusedExpression")
     fun `a notebook changed on disk is read again, or offered to be when it has changes of its own`() =
-        withWorkbenchProbe("split-mode-notebook-reload", "", files = mapOf("example.ipynb" to NOTEBOOK)) {
+        withNotebookProbe("split-mode-notebook-reload", NOTEBOOK) {
             val frame = driver.ideFrame { }
             awaitProbeValue("the notebook shown for the extension", { runCatching { command("probe.showNotebook") }.getOrNull() }) { it == "1" }
             val notebook = "//div[@accessiblename='Notebook example.ipynb']"

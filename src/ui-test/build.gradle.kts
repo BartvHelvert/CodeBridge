@@ -11,8 +11,8 @@ import java.time.Duration
  * of the other suites can answer, because a `CodeInsightTestFixture` is a single in-process IDE with
  * no client to forward anything to.
  *
- * Run only when asked for by name: every test here boots two IDEs and downloads them the first
- * time, so it is minutes rather than seconds, and `gradlew test`, `check` or `build` should not
+ * Run only when asked for by name: workflows boot two IDEs, with compatible notebook scenarios
+ * sharing a pair. The first run downloads them, so `gradlew test`, `check` or `build` should not
  * start any of that. `gradlew :ui-test:test`, or Run on a test in the IDE, does.
  */
 plugins {
@@ -30,7 +30,7 @@ dependencies {
     // Prepare the isolated backend store using the same VSIX installer as the plugin.
     testImplementation(project(":backend"))
     testImplementation(project(":shared"))
-    testRuntimeOnly(libs.kotlin.serialization.json.jvm)
+    testImplementation(libs.kotlin.serialization.json.jvm)
     // The same JUnit as every other module: the platform's test dependencies bring JUnit 6 engines,
     // which an older launcher cannot run.
     testImplementation(platform(libs.junit.bom))
@@ -121,6 +121,9 @@ fun uiTestShard(index: Int, count: Int): List<String> {
 
 tasks.test {
     useJUnitPlatform()
+    // Starter resolves out/ide-tests against the working directory. Match the CI cache and log
+    // uploads, and the WSL runner, which all expect it at the checkout root rather than this module.
+    workingDir = rootProject.layout.projectDirectory.asFile
     dependsOn(windowAgentJar)
     systemProperty("codebridge.window.agent", windowAgentJar.flatMap { it.archiveFile }.get().asFile.absolutePath)
     // The plugin has to exist before it can be installed into an IDE.
