@@ -1,8 +1,8 @@
 [versions]
-# 2026.3 EAP, pinned to a build number rather than "2026.3": the release feed lists several builds
+# 2026.3, pinned to a build number rather than "2026.3": the release feed lists several builds
 # under that name, and the one picked would change under us. Every plugin builds against it, and the
 # UI tests launch it.
-idea = "263.7307.44"
+idea = "263.7307.200"
 kotlin-serialization = "1.11.0"
 junit4 = "4.13.2"
 junit = "6.1.3"

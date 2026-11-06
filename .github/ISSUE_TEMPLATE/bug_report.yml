@@ -37,7 +37,7 @@ body:
     attributes:
       label: IDE
       description: From **Help → About**.
-      placeholder: IntelliJ IDEA 2026.3 EAP (IU-263.7307.44)
+      placeholder: IntelliJ IDEA 2026.3 (IU-263.7307.200)
     validations:
       required: true
   - type: input

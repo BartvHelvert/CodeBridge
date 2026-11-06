@@ -134,7 +134,7 @@ coverage is described in [Tests and fixtures](../src/test-extensions/README.md#s
 ## Build and run
 
 The root [build](../build.gradle.kts) and the [runtime's](../src/runtime/plugin/build.gradle.kts) target IntelliJ
-`IU-263.7307.44` (2026.3 EAP); the wrapper pins the Gradle version.
+`IU-263.7307.200` (2026.3); the wrapper pins the Gradle version.
 Configure a compatible Gradle JVM through the IDE or `JAVA_HOME`, then run from the repository root:
 
 ```sh
