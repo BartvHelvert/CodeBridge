@@ -84,9 +84,12 @@ jobs:
       - uses: gradle/actions/setup-gradle@v5
 
       # `freshTest` rather than `test`: a restored build cache can serve test classes compiled
-      # against an older `main`, which pass or fail for the wrong reasons.
+      # against an older `main`, which pass or fail for the wrong reasons. The UI tests are compiled
+      # too, though not run: that resolves Starter's dependencies into the Gradle home this job
+      # caches, which the UI test jobs restore. Not in it, every shard fetched them again, and a
+      # shard failed when Maven Central said one of them was not there.
       - name: Run tests
-        run: ./gradlew freshTest --console=plain --continue
+        run: ./gradlew freshTest :ui-test:testClasses --console=plain --continue
 
       - name: Upload test reports
         if: failure()
