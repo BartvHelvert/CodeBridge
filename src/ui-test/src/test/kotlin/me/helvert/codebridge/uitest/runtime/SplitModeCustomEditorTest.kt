@@ -3,6 +3,7 @@ package me.helvert.codebridge.uitest.runtime
 import com.intellij.driver.client.Remote
 import com.intellij.driver.client.service
 import com.intellij.driver.model.OnDispatcher
+import com.intellij.driver.model.RdTarget
 import com.intellij.driver.sdk.invokeAction
 import com.intellij.driver.sdk.singleProject
 import com.intellij.driver.sdk.ui.components.common.EditorTabsRef
@@ -14,6 +15,7 @@ import com.intellij.driver.sdk.ui.components.common.toolwindows.projectView
 import com.intellij.driver.sdk.ui.components.elements.JListUiComponent
 import com.intellij.driver.sdk.ui.components.elements.PopupMenuUiComponent
 import com.intellij.driver.sdk.ui.components.elements.popupMenu
+import com.intellij.driver.sdk.ui.remote.Component
 import com.intellij.driver.sdk.ui.ui
 import com.intellij.ide.starter.junit5.RemoteDevRun
 import me.helvert.codebridge.uitest.awaitProbeValue
@@ -130,11 +132,15 @@ class SplitModeCustomEditorTest {
                     items.any { it.startsWith(item) }
                 }
                 val popup = checkNotNull(menu())
-                // The click fixture can highlight an item without invoking it on Windows.
-                driver.withContext(OnDispatcher.EDT) { popup.component.requestFocus() }
-                awaitProbeValue("the switcher's menu focused", { popup.isFocusOwner() }) { it }
                 popup.selectItem(items.first { it.startsWith(item) })
-                popup.keyboard { key(KeyEvent.VK_ENTER) }
+                // Chosen as Enter chooses it, without input: on Windows the click fixture can highlight an
+                // item without invoking it, and on Xvfb a reused popup window can stay under the frame,
+                // focused for Swing but never sent the key.
+                driver.withContext(OnDispatcher.EDT) {
+                    checkNotNull(driver.utility(PopupUtilRef::class, RdTarget.FRONTEND).getPopupContainerFor(popup.component)) {
+                        "No popup holds the switcher's menu"
+                    }.handleSelect(true)
+                }
             }
         }
 
@@ -311,6 +317,16 @@ class SplitModeCustomEditorTest {
     private fun WorkbenchProbe.selectedEditorModified(): Boolean? = runCatching {
         driver.service(FileEditorManagerRef::class, driver.singleProject()).getSelectedEditor()?.isModified()
     }.getOrNull()
+
+    @Remote("com.intellij.openapi.ui.popup.util.PopupUtil")
+    interface PopupUtilRef {
+        fun getPopupContainerFor(component: Component): ListPopupRef?
+    }
+
+    @Remote("com.intellij.openapi.ui.popup.ListPopup")
+    interface ListPopupRef {
+        fun handleSelect(handleFinalChoices: Boolean)
+    }
 
     @Remote("com.intellij.openapi.fileEditor.FileEditorManager")
     interface FileEditorManagerRef {
