@@ -212,7 +212,7 @@ intellijPlatform {
  * split-mode backend, of whichever IDE, can run at a time.
  */
 val alternativeIdes = mapOf(
-    IntelliJPlatformType.RustRover to "263.7031.25",
+    IntelliJPlatformType.RustRover to "263.7307.214",
 )
 
 intellijPlatformTesting {

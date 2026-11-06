@@ -18,7 +18,7 @@ class CachedIdeDownloaderTest {
     @TempDir
     lateinit var directory: Path
 
-    private val pinned = IdeaUltimateProductInit().ideInfo.copy(buildNumber = "263.7307.44")
+    private val pinned = IdeaUltimateProductInit().ideInfo.copy(buildNumber = "263.7307.200")
 
     private val unavailable = object : IdeDownloader {
         override fun downloadIdeInstaller(ideInfo: IdeInfo, installerDirectory: Path): IdeInstallerFile =
@@ -45,7 +45,7 @@ class CachedIdeDownloaderTest {
 
     @Test
     fun `another build's cached installer cannot satisfy the pinned build`() {
-        archive(pinned.copy(buildNumber = "263.7031.23")).writeText("older installer")
+        archive(pinned.copy(buildNumber = "263.7307.44")).writeText("older installer")
         assertFailsWith<UnknownHostException> {
             CachedIdeDownloader(unavailable).downloadIdeInstaller(pinned, directory)
         }

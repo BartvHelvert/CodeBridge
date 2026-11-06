@@ -91,7 +91,7 @@ forwards to a split frontend. It also means the
 plugin no longer depends on the LSP module at all, so it no longer needs an IDE that has one.
 
 Observed on 2026-09-11 against IntelliJ IDEA 2026.1.3, and re-checked on 2026-09-14 against the
-2026.3 EAP build 263.4732.28 (the build now pins 263.7307.44): `lib/` ships `intellij.platform.lsp.jar`,
+2026.3 EAP build 263.4732.28 (the build now pins 263.7307.200): `lib/` ships `intellij.platform.lsp.jar`,
 `intellij.platform.lsp.impl.jar` and `intellij.platform.lsp.impl.structureView.jar`, and nothing
 matching `*lsp*frontend*` exists anywhere in the distribution, while the three comparisons above all
 still ship theirs. Re-run that check before assuming this section is current.
