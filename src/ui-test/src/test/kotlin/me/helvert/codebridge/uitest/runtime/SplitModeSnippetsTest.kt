@@ -41,6 +41,20 @@ class SplitModeSnippetsTest {
         ExtensionStore(context.paths.configDir.resolve("codebridge/extensions"))
             .install(requiredPath("codebridge.textmate.vsix"))
         context.useShortClientSystemDir()
+        // Completion is asked for once, explicitly. With autopopup on, the popups started while the
+        // prefix was typed are restarted by that request within one session, and the lookup can keep
+        // the first popup's item: Enter commits it for a request the backend has dropped, and the
+        // backend skips the insert. See "A restarted split-mode lookup can keep an item the backend
+        // has dropped" in docs/platform-limitations.md.
+        Files.createDirectories(context.frontendIDEContext.paths.configDir.resolve("options")).resolve("editor.xml").writeText(
+            """
+            <application>
+              <component name="CodeInsightSettings">
+                <option name="AUTO_POPUP_COMPLETION_LOOKUP" value="false" />
+              </component>
+            </application>
+            """.trimIndent()
+        )
 
         val run = context.runSplitIde(commands = CommandChain().waitForSmartMode(), open = "example.codebridgegrammar")
         var failure: Throwable? = null
@@ -64,7 +78,7 @@ class SplitModeSnippetsTest {
                 }
             }) { "${CONTENT}probeb" in it }
             driver.invokeAction("CodeCompletion", component = editor.component)
-            // Found again each time: a lookup asked again as more is typed is another list. The item
+            // Found again each time: a lookup asked again is another list. The item
             // is drawn as its label split where it matched, so it is told by its raw text, and it is
             // the first -- the one selected, which Enter inserts.
             fun lookup(): List<String> = runCatching {

@@ -42,6 +42,8 @@ entries say so, and say what such a build loses.
     - [No public way to forward a backend port to the client](#no-public-way-to-forward-a-backend-port-to-the-client)
     - [A frontend editor cannot open a backend file](#a-frontend-editor-cannot-open-a-backend-file)
     - [The Structure view cannot outline a client-only editor](#the-structure-view-cannot-outline-a-client-only-editor)
+    - [A restarted split-mode lookup can keep an item the backend has
+      dropped](#a-restarted-split-mode-lookup-can-keep-an-item-the-backend-has-dropped)
 - [Editing](#editing)
     - [TextMate files never split brackets on Enter](#textmate-files-never-split-brackets-on-enter)
     - [TextMate reads indentation patterns as Java regexes (worked around)](#textmate-reads-indentation-patterns-as-java-regexes-worked-around)
@@ -518,6 +520,27 @@ go to them. In a split-mode client the Structure view shows nothing for a notebo
 **What would fix it.** A Structure view that asks the client's selected editor for its structure when
 that editor is the client's own, or a public way for a client-only tab to name the backend file the
 Structure view should outline, with a builder the backend provides.
+
+### A restarted split-mode lookup can keep an item the backend has dropped
+
+**What VS Code offers.** Completion asked for again while the list is open, by typing or by
+Ctrl+Space, replaces the list, and Enter inserts whichever item is selected.
+
+**What the platform offers.** In split mode every completion run in a session sends the backend a
+new request, and the backend keeps only the latest one's results. Each `FrontendLookupElement` holds
+the request it arrived in. When runs follow each other closely -- autopopups started while a prefix
+is typed, then an explicit Code Completion -- the lookup can keep the element from the first of them.
+Enter commits that element for its old request; `BackendCompletionLookupMirrorArrangerImpl.applySelection`
+finds no such request ("No completion result found for id"), and `BackendCompletionChooseItemActionHandler`
+skips the insert ("frontend-committed selection could not be applied"). The lookup closes and the
+prefix stays as typed. Seen on IU-263.7307.44 with four requests in 550 ms.
+
+**What CodeBridge does.** Nothing; the items are the platform's. `SplitModeSnippetsTest` turns the
+client's completion autopopup off so its one explicit request is the session's only one.
+
+**What would fix it.** A lookup that replaces an element with the latest request's when a restarted
+run returns the same item, or a backend that resolves a committed item against any request of the
+session that still holds it.
 
 ## Editing
 
