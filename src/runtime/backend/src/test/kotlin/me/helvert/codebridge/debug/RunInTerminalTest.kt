@@ -102,8 +102,13 @@ class RunInTerminalTest {
             Thread.sleep(600)
             assertTrue(!finished.isCompleted, "Silence before the first word is not taken as quiet")
             directory.resolve("speak").createFile()
+            // Until the words arrive, not until the session ends: the grace runs from `finished()`,
+            // and a busy Windows runner once took longer than what was left of it to print through
+            // its pseudo-terminal. Reading before the end is the test above's.
+            val spoken = System.nanoTime() + TimeUnit.SECONDS.toNanos(20)
+            while (System.nanoTime() < spoken && !written.contains("late-words")) Thread.sleep(50)
+            assertTrue(written.contains("late-words"), "The program spoke: '$written'")
             runBlocking { withTimeout(10.seconds) { finished.await() } }
-            assertTrue(written.contains("late-words"), "Read before the session ends: '$written'")
         }
     }
 
