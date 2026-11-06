@@ -254,12 +254,12 @@ class SplitModeCustomEditorTest {
         // undone: the editor is modified once the backend has it.
         awaitProbeValue("the workbench holding the extension's edits", { selectedEditorModified() }) { it == true }
         browser.findElement("//p[@id='value']").click()
-        frame.keyboard { hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_Z) }
+        pageUndoKey(frame, browser, redo = false)
         awaitProbeValue("the extension asked to undo", ::state) { it?.contains(""""undone":1""") == true }
         count(1)
-        frame.keyboard { hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_SHIFT, KeyEvent.VK_Z) }
+        pageUndoKey(frame, browser, redo = true)
         count(2)
-        frame.keyboard { hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_Z) }
+        pageUndoKey(frame, browser, redo = false)
         count(1)
         awaitProbeValue("the extension asked to undo twice and redo once", ::state) {
             it?.contains(""""undone":2""") == true && it.contains(""""redone":1""")
@@ -276,6 +276,26 @@ class SplitModeCustomEditorTest {
         awaitProbeValue("the document let go of", ::state) {
             it?.contains(""""saved":[1,2]""") == true && it.contains(""""disposed":1""")
         }
+    }
+
+    /**
+     * Ctrl+Z, or Ctrl+Shift+Z to [redo], pressed in [browser]'s page.
+     *
+     * On Windows the page is handed the key itself: the driver posts key events rather than typing
+     * them, and those carry no scan code, which is what the off-screen browser there makes a page's
+     * key from. Each reaches the page as an unidentified key, so the page never sees an undo.
+     */
+    private fun pageUndoKey(frame: IdeaFrameUI, browser: JCefUI, redo: Boolean) {
+        if (!System.getProperty("os.name").startsWith("Windows")) {
+            frame.keyboard {
+                if (redo) hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_SHIFT, KeyEvent.VK_Z) else hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_Z)
+            }
+            return
+        }
+        browser.jcefWorker.runJs(
+            "(document.activeElement || document.body).dispatchEvent(new KeyboardEvent('keydown', " +
+                "{key: '${if (redo) "Z" else "z"}', code: 'KeyZ', ctrlKey: true, shiftKey: $redo, bubbles: true, cancelable: true}))"
+        )
     }
 
     /** Whether the client's selected editor has changes, which a custom editor's are the backend's; null while it cannot say. */
