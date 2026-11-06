@@ -2,6 +2,7 @@ package me.helvert.codebridge.uitest.runtime
 
 import com.intellij.driver.client.Remote
 import com.intellij.driver.client.service
+import com.intellij.driver.model.OnDispatcher
 import com.intellij.driver.sdk.invokeAction
 import com.intellij.driver.sdk.singleProject
 import com.intellij.driver.sdk.ui.components.common.EditorTabsRef
@@ -128,7 +129,12 @@ class SplitModeCustomEditorTest {
                 val items = awaitProbeValue("'$item' in the switcher's menu", { runCatching { menu()?.rawItems }.getOrNull().orEmpty() }) { items ->
                     items.any { it.startsWith(item) }
                 }
-                checkNotNull(menu()).clickItemAtIndex(items.indexOfFirst { it.startsWith(item) })
+                val popup = checkNotNull(menu())
+                // The click fixture can highlight an item without invoking it on Windows.
+                driver.withContext(OnDispatcher.EDT) { popup.component.requestFocus() }
+                awaitProbeValue("the switcher's menu focused", { popup.isFocusOwner() }) { it }
+                popup.selectItem(items.first { it.startsWith(item) })
+                popup.keyboard { key(KeyEvent.VK_ENTER) }
             }
         }
 
@@ -138,11 +144,14 @@ class SplitModeCustomEditorTest {
         driver.invokeAction("ActivateProjectToolWindow")
         frame.projectView { projectViewTree.clickPath(project.fileName.toString(), name, fullMatch = false) }
 
-        choose("Probe Text Editor", "Text Editor")
-        awaitProbeValue("the file shown as text", { textShowing() }) { it }
+        repeat(3) {
+            choose("Probe Text Editor", "Text Editor")
+            awaitProbeValue("the file shown as text", { textShowing() }) { it }
 
-        choose("Text Editor", "Probe Text Editor")
-        awaitProbeValue("the file back in its custom editor", { pageShowing() && !textShowing() }) { it }
+            choose("Text Editor", "Probe Text Editor")
+            awaitProbeValue("the file back in its custom editor", { pageShowing() && !textShowing() }) { it }
+            Unit
+        }
 
         choose("Probe Text Editor", "Set Default for '*.probetext'", "Text Editor")
         // Kept by the open tab, as VS Code keeps it; a file opened afterwards opens as text.
