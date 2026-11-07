@@ -66,7 +66,15 @@ class SplitModeCustomEditorTest {
     @Test
     fun `the editor switcher beside the tabs reopens a file as text and back, and sets the default`() =
         withWorkbenchProbe("split-mode-custom-editor-switcher", "", files = mapOf("example.probetext" to "hello\n")) {
-            switcher()
+            val settings = driver.utility(UISettingsRef::class, RdTarget.FRONTEND).getInstance()
+            val keepPopups = driver.withContext(OnDispatcher.EDT) {
+                settings.getKeepPopupsForToggles().also { settings.setKeepPopupsForToggles(true) }
+            }
+            try {
+                switcher()
+            } finally {
+                driver.withContext(OnDispatcher.EDT) { settings.setKeepPopupsForToggles(keepPopups) }
+            }
         }
 
     @Test
@@ -143,6 +151,9 @@ class SplitModeCustomEditorTest {
                     }.handleSelect(true)
                 }
             }
+            awaitProbeValue("the editor switcher's menu closed after choosing ${path.last()}", {
+                menu(0) == null
+            }) { it }
         }
 
         open(name)
@@ -327,6 +338,13 @@ class SplitModeCustomEditorTest {
     @Remote("com.intellij.openapi.ui.popup.util.PopupUtil")
     interface PopupUtilRef {
         fun getPopupContainerFor(component: Component): ListPopupRef?
+    }
+
+    @Remote("com.intellij.ide.ui.UISettings")
+    interface UISettingsRef {
+        fun getInstance(): UISettingsRef
+        fun getKeepPopupsForToggles(): Boolean
+        fun setKeepPopupsForToggles(value: Boolean)
     }
 
     @Remote("com.intellij.openapi.ui.popup.ListPopup")
