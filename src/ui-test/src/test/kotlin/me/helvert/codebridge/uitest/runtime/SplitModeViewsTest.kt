@@ -51,7 +51,14 @@ class SplitModeViewsTest {
                 paths.any { it.contains("Open probe panel 0") }
             }
 
-            // Drive the contributed title action, then check the refreshed child's visible label.
+            // A fresh client's trial balloon can cover the title toolbar and intercept Refresh.
+            fun trialBalloons() = frame.xx(BALLOON).list().filter {
+                it.hasSubtext("Your free 30-day trial has started!")
+            }
+            trialBalloons().forEach { it.x { byVisibleText("Close") }.click() }
+            awaitValue("the trial notification clear of the tree toolbar", { trialBalloons().isEmpty() }) { it }
+
+            // Drive the contributed title action once, then check the refreshed child's visible label.
             frame.actionButton { byAccessibleName("Refresh probe tree") }.click()
             awaitValue(
                 "the refreshed tree, retaining its expanded group",
