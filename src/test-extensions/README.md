@@ -118,6 +118,16 @@ client has no local grammar; inspecting only its lexer misses them. Run it alone
 .\gradlew.bat :ui-test:test
 ```
 
+UI interactions should wait for the specific component or extension state they need, perform an
+action once, and poll its result with `awaitProbeValue`. The shared wait retries lookup timeouts
+and disappearing components, retains the last observation and lookup error, and propagates other
+failures; a wait for the extension host or an extension to start passes `retrying = ::isStartupFailure`. Repeated commands are appropriate only when they are idempotent. Tests run serially
+because they share desktop focus and IDE cleanup state.
+
+The heavy-webview loading and notebook Run Cell checks always verify functionality. Add
+`-PuiTestPerformance=true` to also enforce their strict timing budgets on a controlled runner;
+ordinary runs allow the functional wait budget instead of failing on shared-runner speed.
+
 Opt-in, and not part of `freshTest`. The first run downloads and unpacks IDEA into `out/`, which is
 a few GB and about a minute; after that a test is roughly twenty seconds, because the thin client
 ships inside the same distribution and needs no download of its own.

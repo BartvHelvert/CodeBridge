@@ -22,11 +22,12 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import java.awt.event.KeyEvent
 import java.nio.file.Files
-import java.util.concurrent.TimeUnit
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /** A real installed extension, child server, backend and client in one workflow. */
 @ExtendWith(RemoteDevRun::class)
@@ -276,16 +277,8 @@ class SplitModeExtensionTest {
         editor.getAllHighlights()
             .count { it.getDescription()?.contains("Replace ERROR to clear this diagnostic") == true }
 
-    private fun <T> awaitValue(description: String, read: () -> T, matches: (T) -> Boolean): T {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(90)
-        var last: T? = null
-        while (System.nanoTime() < deadline) {
-            last = read()
-            if (matches(last)) return last
-            Thread.sleep(300)
-        }
-        error("Timed out waiting for $description; last observed: $last")
-    }
+    private fun <T> awaitValue(description: String, read: () -> T, matches: (T) -> Boolean): T =
+        awaitProbeValue(description, read, timeout = 90.seconds, interval = 300.milliseconds, matches = matches)
 
     private companion object {
         const val INITIAL = "ERROR original buffer\n\n"

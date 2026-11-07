@@ -5,7 +5,7 @@ import com.intellij.driver.client.Remote
 import com.intellij.driver.model.OnDispatcher
 import com.intellij.driver.model.RdTarget
 import com.intellij.driver.sdk.Project
-import com.intellij.driver.sdk.singleProject
+import com.intellij.driver.sdk.getOpenProjects
 import com.intellij.driver.sdk.ui.components.common.JEditorUiComponent
 import com.intellij.driver.sdk.ui.components.common.codeEditor
 import com.intellij.driver.sdk.ui.components.common.ideFrame
@@ -21,13 +21,14 @@ import org.junit.jupiter.api.extension.ExtendWith
 import java.awt.image.BufferedImage
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.TimeUnit
 import javax.imageio.ImageIO
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.math.abs
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * What GitLens and Error Lens draw and open, as the user sees it in a JetBrains Client.
@@ -75,9 +76,12 @@ class SplitModeWorkbenchTest {
             val undecorated = decorationState(driver, client())
 
             // The probe starts with the window; the command answers once its editor is visible to it.
-            awaitValue(
+            awaitProbeValue(
                 "the probe to decorate example.json",
-                { runCatching { servers.executeCommandForTest("probe.decorate", "[]") }.getOrNull() }) {
+                { servers.executeCommandForTest("probe.decorate", "[]") },
+                timeout = 120.seconds,
+                retrying = ::isStartupFailure,
+            ) {
                 it == "1"
             }
 
@@ -334,7 +338,7 @@ class SplitModeWorkbenchTest {
 
     /** The project, once the backend has opened it; the client holds none. */
     private fun backendProject(driver: Driver): Project = awaitValue("the backend to open the project", {
-        runCatching { driver.singleProject(RdTarget.BACKEND) }.getOrNull()?.takeIf { it.isInitialized() }
+        driver.getOpenProjects(RdTarget.BACKEND).singleOrNull()?.takeIf { it.isInitialized() }
     }) { it != null }!!
 
     private fun dumpHostOutput(context: IDERemDevTestContext, error: Throwable) {
@@ -349,16 +353,8 @@ class SplitModeWorkbenchTest {
         }.onFailure(error::addSuppressed)
     }
 
-    private fun <T> awaitValue(description: String, read: () -> T, matches: (T) -> Boolean): T {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(120)
-        var last: T? = null
-        while (System.nanoTime() < deadline) {
-            last = read()
-            if (matches(last)) return last
-            Thread.sleep(500)
-        }
-        error("Timed out waiting for $description; last observed: $last")
-    }
+    private fun <T> awaitValue(description: String, read: () -> T, matches: (T) -> Boolean): T =
+        awaitProbeValue(description, read, timeout = 120.seconds, interval = 500.milliseconds, matches = matches)
 
     private companion object {
         const val PLUGIN_ID = "me.helvert.codebridge.runtime"

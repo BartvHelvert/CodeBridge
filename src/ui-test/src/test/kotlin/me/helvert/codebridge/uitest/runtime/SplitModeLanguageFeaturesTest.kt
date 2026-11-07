@@ -4,6 +4,8 @@ import com.intellij.driver.model.OnDispatcher
 import com.intellij.driver.sdk.invokeAction
 import com.intellij.driver.sdk.ui.components.common.codeEditor
 import com.intellij.driver.sdk.ui.components.common.ideFrame
+import com.intellij.driver.sdk.ui.components.elements.JTextFieldUI
+import com.intellij.driver.sdk.ui.ui
 import com.intellij.ide.starter.junit5.RemoteDevRun
 import me.helvert.codebridge.uitest.awaitProbeValue
 import me.helvert.codebridge.uitest.runtime.SplitModeWorkbenchTest.EditorExRef
@@ -72,12 +74,19 @@ class SplitModeLanguageFeaturesTest {
                 driver.withContext(OnDispatcher.EDT) { editor.inlaysOnLine(3) }
             }) { it.isNotEmpty() }.single()
             editor.clickInlay(swatch)
-            // The picker opens with its red field focused: 255 becomes 0, and #ff0000 black.
-            Thread.sleep(1_000)
-            frame.keyboard {
+            // Choose the hex field explicitly: the popup's initial focus and RGB/HSB mode are not
+            // prerequisites a keyboard test can assume. Preserve alpha when the picker includes it.
+            val hex = awaitProbeValue("the colour picker's hex field", {
+                driver.ui.xx(JTextFieldUI::class.java) { byType("javax.swing.JTextField") }.list()
+                    .singleOrNull { it.text.trimStart('#').lowercase() in listOf("ff0000", "ff0000ff") }
+            }) { it != null }!!
+            val black = if (hex.text.trimStart('#').length == 8) "000000ff" else "000000"
+            hex.click()
+            awaitProbeValue("the colour picker's hex field focused", { hex.isFocusOwner() }) { it }
+            hex.keyboard {
                 @Suppress("OPT_IN_USAGE") // Selects the picker field's text; there is no action for it.
                 hotKeyWithDefaultModifierKey(KeyEvent.VK_A)
-                typeText("0")
+                typeText(black)
             }
             awaitProbeValue(
                 "the picked colour written by the extension",
