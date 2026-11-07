@@ -15,6 +15,7 @@ import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.actionSystem.IdeActions
 import com.intellij.openapi.actionSystem.UiDataProvider
 import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.editor.event.DocumentEvent
@@ -540,9 +541,18 @@ internal class CellView(private val project: Project, cell: CellDto, private val
                     LookupManager.getActiveLookup(editor) == null &&
                     editor.caretModel.caretCount == 1 &&
                     !editor.selectionModel.hasSelection()
+                if (LOG.isDebugEnabled && !editor.isDisposed) LOG.debug(
+                    "Escape in cell $handle (kind=$kind): enabled=${event.presentation.isEnabled}, " +
+                            "focused=$editing, editingMarkup=$editingMarkup, " +
+                            "lookup=${LookupManager.getActiveLookup(editor) != null}, " +
+                            "selection=${editor.selectionModel.hasSelection()}, carets=${editor.caretModel.caretCount}",
+                )
             }
 
-            override fun actionPerformed(event: AnActionEvent) = quitEdit()
+            override fun actionPerformed(event: AnActionEvent) {
+                LOG.debug("Escape action in cell $handle (kind=$kind)")
+                quitEdit()
+            }
         }.registerCustomShortcutSet(CustomShortcutSet(KeyEvent.VK_ESCAPE), editor.contentComponent, this)
     }
 
@@ -619,6 +629,7 @@ internal class CellView(private val project: Project, cell: CellDto, private val
 
     /** Edits the cell: a markdown cell shows its editor in place of its rendering. */
     fun focusEditor() {
+        LOG.debug("Editing cell $handle (kind=$kind), editingMarkup=$editingMarkup")
         if (rendered != null && !editingMarkup) {
             editingMarkup = true
             show()
@@ -648,6 +659,10 @@ internal class CellView(private val project: Project, cell: CellDto, private val
      * whether or not the focus then leaves its editor.
      */
     fun quitEdit() {
+        if (LOG.isDebugEnabled) LOG.debug(
+            "Stopping editing in cell $handle (kind=$kind), editingMarkup=$editingMarkup, " +
+                    "focused=${!editor.isDisposed && editing}",
+        )
         owner.selected(this)
         if (editingMarkup && !editor.isDisposed) {
             editingMarkup = false
@@ -906,6 +921,8 @@ internal class CellView(private val project: Project, cell: CellDto, private val
     }
 
     companion object {
+        private val LOG = Logger.getInstance(CellView::class.java)
+
         /** The cell an editor shows, on that editor. */
         val KEY: Key<CellView> = Key.create("CodeBridge.NotebookCell")
         /** The cell whose toolbar an action was chosen from. */

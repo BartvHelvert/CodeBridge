@@ -42,6 +42,7 @@ import kotlin.test.assertEquals
 @Suppress("OPT_IN_USAGE") // The keys are what is tested: cells bind run and undo to them, apart from the IDE's actions.
 class SplitModeNotebookTest {
     private var session: WorkbenchSession? = null
+    private var sessionCount = 0
 
     @AfterAll
     fun closeSession() {
@@ -52,7 +53,12 @@ class SplitModeNotebookTest {
 
     /** Same installation and settings for every notebook; files and host state are fresh each time. */
     private fun withNotebookProbe(name: String, notebook: String, test: WorkbenchProbe.() -> Unit) {
-        val running = session ?: startWorkbenchProbe("split-mode-notebooks", "").also { session = it }
+        // Starter replaces a context's output when its name is reused. Keep a failed session's
+        // logs and screenshots when the next scenario starts a fresh pair.
+        val running = session ?: startWorkbenchProbe(
+            "split-mode-notebooks-${++sessionCount}", "",
+            traced = "#jb.focus.requests,#me.helvert.codebridge.notebook.CellView",
+        ).also { session = it }
         try {
             running.test {
                 driver.invokeAction("CloseAllEditors")
@@ -334,9 +340,13 @@ class SplitModeNotebookTest {
         }
 
     @Test
+    fun `the strip between cells adds a code or markdown cell there`() = repeat(3) { round ->
+        insertFromStrip("split-mode-notebook-insert-$round")
+    }
+
     @Suppress("UnusedExpression")
-    fun `the strip between cells adds a code or markdown cell there`() =
-        withNotebookProbe("split-mode-notebook-insert", TWO_CELLS) {
+    private fun insertFromStrip(name: String) =
+        withNotebookProbe(name, TWO_CELLS) {
             val frame = driver.ideFrame { }
             assertEquals("2", command("probe.showNotebook"), "the notebook shown for the extension")
             val notebook = "//div[@accessiblename='Notebook example.ipynb']"
