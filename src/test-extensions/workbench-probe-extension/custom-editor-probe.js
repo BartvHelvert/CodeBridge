@@ -184,7 +184,7 @@ function page(button) {
 <html>
 <head><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'"></head>
 <body>
-<p id="value">Loading</p>
+<p id="value" tabindex="0">Loading</p>
 <button id="act">${button}</button>
 <script>
     const api = acquireVsCodeApi();

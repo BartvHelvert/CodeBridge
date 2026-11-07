@@ -26,7 +26,6 @@ import java.awt.GraphicsEnvironment
 import java.awt.Rectangle
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.TimeUnit
 import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.deleteRecursively
 import kotlin.io.path.writeText
@@ -136,18 +135,6 @@ internal fun IDERemDevTestContext.writeUserSettings(json: String) {
     Files.createDirectories(paths.configDir.resolve("codebridge")).resolve("settings.json").writeText(json)
 }
 
-/** Polls [read] until it [matches], for up to 90 seconds. */
-internal fun <T> awaitProbeValue(description: String, read: () -> T, matches: (T) -> Boolean): T {
-    val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(90)
-    var last: T? = null
-    while (System.nanoTime() < deadline) {
-        last = read()
-        if (matches(last)) return last
-        Thread.sleep(500)
-    }
-    error("Timed out waiting for $description; last observed: $last")
-}
-
 /**
  * Starts the backend and the client with the driver attached, out of the developer's way.
  *
@@ -233,8 +220,14 @@ internal fun IDETestContext.runSplitIde(
         // only calls `toFront`, which raises the frame without focusing it there; a cross-window
         // `requestFocus` does focus it.
         val ideFrame = run.driver.ideFrame { }
-        run.driver.withContext(OnDispatcher.EDT) { ideFrame.component.requestFocus() }
-        waitFor("the client's frame focused", FOCUS) { ideFrame.isFocused() }
+        // Another startup window may take focus after the first request. Requesting it again is
+        // idempotent; replaying a click or a keystroke here would not be.
+        waitFor("the client's frame focused", FOCUS) {
+            if (!ideFrame.isFocused()) {
+                run.driver.withContext(OnDispatcher.EDT) { ideFrame.component.requestFocus() }
+            }
+            ideFrame.isFocused()
+        }
     } catch (e: Throwable) {
         try {
             run.closeIdeAndWait()
@@ -248,7 +241,7 @@ internal fun IDETestContext.runSplitIde(
 
 private val STARTUP = 6.minutes
 
-private val FOCUS = 10.seconds
+private val FOCUS = 30.seconds
 
 /** The registry key for `JdkAuto`, which sets up a JDK for a project that names none or an unknown one. */
 private const val JDK_AUTO_SETUP = "jdk.auto.setup"

@@ -15,11 +15,12 @@ import me.helvert.codebridge.uitest.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import java.nio.file.Files
-import java.util.concurrent.TimeUnit
 import kotlin.io.path.writeText
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * An extension another plugin bundles runs as an installed one does, with nothing in the store.
@@ -112,16 +113,8 @@ class SplitModeBundledExtensionTest {
         editor.getAllHighlights()
             .count { it.getDescription()?.contains("Replace ERROR to clear this diagnostic") == true }
 
-    private fun <T> awaitValue(description: String, read: () -> T, matches: (T) -> Boolean): T {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(90)
-        var last: T? = null
-        while (System.nanoTime() < deadline) {
-            last = read()
-            if (matches(last)) return last
-            Thread.sleep(300)
-        }
-        error("Timed out waiting for $description; last observed: $last")
-    }
+    private fun <T> awaitValue(description: String, read: () -> T, matches: (T) -> Boolean): T =
+        awaitProbeValue(description, read, timeout = 90.seconds, interval = 300.milliseconds, matches = matches)
 
     private companion object {
         const val ID = "codebridge.lsp-bundled-probe"

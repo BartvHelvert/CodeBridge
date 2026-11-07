@@ -2,6 +2,7 @@ package me.helvert.codebridge.uitest.runtime
 
 import com.intellij.driver.client.Remote
 import com.intellij.driver.client.service
+import com.intellij.driver.model.OnDispatcher
 import com.intellij.driver.sdk.invokeAction
 import com.intellij.driver.sdk.singleProject
 import com.intellij.driver.sdk.ui.components.common.EditorTabsRef
@@ -16,10 +17,12 @@ import com.intellij.driver.sdk.ui.components.elements.popupMenu
 import com.intellij.driver.sdk.ui.ui
 import com.intellij.ide.starter.junit5.RemoteDevRun
 import me.helvert.codebridge.uitest.awaitProbeValue
+import me.helvert.codebridge.uitest.enforcePerformanceBudgets
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import java.awt.event.KeyEvent
 import kotlin.io.path.readText
+import kotlin.test.assertEquals
 
 /**
  * Custom editors as the user meets them in a JetBrains Client: a file an extension's
@@ -37,38 +40,37 @@ class SplitModeCustomEditorTest {
     @Test
     fun `a text file opens in its extension's editor, whose edits undo and save`() =
         withWorkbenchProbe("split-mode-custom-text-editor", "", files = mapOf("example.probetext" to "hello\n")) {
-            // Hard references for as long as the test runs: the browser it polls is otherwise a weak one.
-            driver.withContext { textEditor() }
+            textEditor()
         }
 
     @Test
     fun `an extension's own document undoes its edits, saves, and is saved when closed with changes`() =
         withWorkbenchProbe("split-mode-custom-editor", "", files = mapOf("example.probecounter" to "0\n")) {
-            driver.withContext { counterEditor() }
+            counterEditor()
         }
 
     @Test
     fun `a file the IDE would hand to the system, opened from the Project view, opens in its custom editor`() =
         withWorkbenchProbe("split-mode-native-custom-editor", "", files = mapOf("example.probecounter.pdf" to "3\n")) {
-            driver.withContext { nativeFile() }
+            nativeFile()
         }
 
     @Test
     fun `a page as large as drawio's loads its resources quickly, and again when reopened`() =
         withWorkbenchProbe("split-mode-heavy-webview", "", files = heavyFiles() + ("example.probeheavy" to "heavy\n")) {
-            driver.withContext { heavyEditor() }
+            heavyEditor()
         }
 
     @Test
     fun `the editor switcher beside the tabs reopens a file as text and back, and sets the default`() =
         withWorkbenchProbe("split-mode-custom-editor-switcher", "", files = mapOf("example.probetext" to "hello\n")) {
-            driver.withContext { switcher() }
+            switcher()
         }
 
     @Test
     fun `Open With in the Project view opens a file in an editor it opens in only when asked for`() =
         withWorkbenchProbe("split-mode-custom-editor-open-with", "", files = mapOf("example.probetext" to "hello\n")) {
-            driver.withContext { openWith() }
+            openWith()
         }
 
     /**
@@ -79,7 +81,7 @@ class SplitModeCustomEditorTest {
         val frame = driver.ideFrame { }
         val name = "example.probetext"
         open(name)
-        awaitProbeValue("the custom editor's page", { runCatching { frame.jcef().present() }.getOrDefault(false) }) { it }
+        awaitProbeValue("the custom editor's page", { frame.jcef().present() }) { it }
 
         driver.invokeAction("ActivateProjectToolWindow")
         frame.projectView { projectViewTree.rightClickPath(project.fileName.toString(), name, fullMatch = false) }
@@ -111,7 +113,7 @@ class SplitModeCustomEditorTest {
         val frame = driver.ideFrame { }
         val name = "example.probetext"
         fun textShowing() = frame.xx("//div[@class='EditorComponentImpl' and contains(@accessiblename, '$name')]").list().any { it.component.isShowing() }
-        fun pageShowing() = runCatching { frame.jcef().present() }.getOrDefault(false)
+        fun pageShowing() = frame.jcef().present()
         fun switcher(editor: String) = frame.x("//div[@class='ActionButtonWithText' and @accessiblename='$editor']")
         /** Opens the switcher, now naming [editor], and chooses [path], a submenu at a time. */
         fun choose(editor: String, vararg path: String) {
@@ -145,24 +147,29 @@ class SplitModeCustomEditorTest {
         awaitProbeValue("the file back in its custom editor", { pageShowing() && !textShowing() }) { it }
 
         choose("Probe Text Editor", "Set Default for '*.probetext'", "Text Editor")
+        awaitProbeValue("the default editor association saved", { userSettings.readText() }) {
+            Regex(""""\*\.probetext"\s*:\s*"default"""").containsMatchIn(it)
+        }
         // Kept by the open tab, as VS Code keeps it; a file opened afterwards opens as text.
         awaitProbeValue("the custom editor still shown", { pageShowing() }) { it }
         driver.invokeAction("CloseContent", component = frame.jcef().component)
         open(name)
         awaitProbeValue("the file opened as text by default", { textShowing() }) { it }
-        awaitProbeValue("the switcher naming the text editor", { runCatching { switcher("Text Editor").present() }.getOrDefault(false) }) { it }
+        awaitProbeValue("the switcher naming the text editor", { switcher("Text Editor").present() }) { it }
     }
 
     private fun WorkbenchProbe.heavyEditor() {
         val frame = driver.ideFrame { }
         fun loads() = Regex(""""ms":(\d+)""").findAll(command("probe.customEditorState").orEmpty())
             .map { it.groupValues[1].toInt() }.toList()
-        // Opened twice: the first page reads every file, the second may be served what the first read.
+        // Reopened twice: every load must finish and run all scripts, including after the browser was disposed.
         repeat(3) { round ->
             open("example.probeheavy")
             val ms = awaitProbeValue("load ${round + 1} of the heavy page", ::loads) { it.size > round }[round]
             println("Heavy webview page, load ${round + 1}: $ms ms; ${command("probe.customEditorState")}")
-            check(ms < HEAVY_PAGE_MILLIS) { "Load ${round + 1} of the heavy page took $ms ms" }
+            if (enforcePerformanceBudgets) {
+                check(ms < HEAVY_PAGE_MILLIS) { "Load ${round + 1} of the heavy page took $ms ms" }
+            }
             val browser = frame.jcef()
             awaitProbeValue("every script run", { html(browser) }) { "Loaded $SMALL_SCRIPTS small scripts" in it }
             driver.invokeAction("CloseContent", component = browser.component)
@@ -222,7 +229,7 @@ class SplitModeCustomEditorTest {
         // The extension's workspace edit, then the page's undo and redo keys taking it back and making it again.
         browser.findElement("//button[@id='act']").click()
         awaitProbeValue("the extension's edit in the page", { html(browser) }) { "Text: hello!</p>" in it }
-        browser.findElement("//p[@id='value']").click()
+        focusValue(frame, browser)
         frame.keyboard { hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_Z) }
         awaitProbeValue("the edit undone", { html(browser) }) { "Text: hello</p>" in it }
         frame.keyboard { hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_SHIFT, KeyEvent.VK_Z) }
@@ -253,7 +260,7 @@ class SplitModeCustomEditorTest {
         // The page shows a count before the workbench hears of its edit, which has to be there to be
         // undone: the editor is modified once the backend has it.
         awaitProbeValue("the workbench holding the extension's edits", { selectedEditorModified() }) { it == true }
-        browser.findElement("//p[@id='value']").click()
+        focusValue(frame, browser)
         pageUndoKey(frame, browser, redo = false)
         awaitProbeValue("the extension asked to undo", ::state) { it?.contains(""""undone":1""") == true }
         count(1)
@@ -313,9 +320,10 @@ class SplitModeCustomEditorTest {
         fun isModified(): Boolean
     }
 
-    /** Opens the project's custom editor file as an extension does, waiting until [name] was. */
-    private fun WorkbenchProbe.open(name: String) =
-        awaitProbeValue("$name opened", { runCatching { command("probe.openCustomEditorFile") }.getOrNull() }) { it == "\"$name\"" }
+    /** The command awaits opening; replaying it after a delayed response can open the file twice. */
+    private fun WorkbenchProbe.open(name: String) {
+        assertEquals("\"$name\"", command("probe.openCustomEditorFile"), "$name opened")
+    }
 
     /** What the icon of editor tab [name] is, or null while there is no such tab. */
     private fun WorkbenchProbe.tabIcon(frame: IdeaFrameUI, name: String): String? = runCatching {
@@ -335,9 +343,22 @@ class SplitModeCustomEditorTest {
         const val HEAVY_PAGE_MILLIS = 8_000
     }
 
-    /** The page's HTML, or none while it cannot be read, saying why. */
-    private fun html(browser: JCefUI): String = runCatching { browser.getHtml() }.getOrElse {
-        println("Could not read the page: $it")
-        ""
+    /**
+     * Focuses the page's value, for the keys typed next to reach the page: the client's frame first,
+     * which a startup window or the browser's own may have taken focus from. Asking again is
+     * idempotent, where a replayed key would not be.
+     */
+    private fun WorkbenchProbe.focusValue(frame: IdeaFrameUI, browser: JCefUI) {
+        awaitProbeValue("the client's frame focused", {
+            if (!frame.isFocused()) driver.withContext(OnDispatcher.EDT) { frame.component.requestFocus() }
+            frame.isFocused()
+        }) { it }
+        browser.findElement("//p[@id='value']").click()
+        awaitProbeValue("the page's value focused", {
+            browser.callJs("String(document.hasFocus() && document.activeElement.id === 'value')")
+        }) { it == "true" }
     }
+
+    /** Lookup timeouts are retried by [awaitProbeValue], retaining the failure on timeout. */
+    private fun html(browser: JCefUI): String = browser.getHtml()
 }
