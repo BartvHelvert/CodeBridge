@@ -2,7 +2,8 @@ package me.helvert.codebridge.uitest.runtime
 
 import com.intellij.driver.client.Driver
 import com.intellij.driver.model.RdTarget
-import com.intellij.driver.sdk.singleProject
+import com.intellij.driver.sdk.getOpenProjects
+import com.intellij.driver.sdk.ui.ui
 import com.intellij.ide.starter.driver.engine.BackgroundRun
 import com.intellij.ide.starter.ide.IDERemDevTestContext
 import com.intellij.ide.starter.runner.Starter
@@ -19,10 +20,12 @@ internal class WorkbenchProbe(
     val driver: Driver,
     val project: Path,
     private val home: Path,
+    /** The user settings file, see [writeUserSettings]. */
+    val userSettings: Path,
     private val logs: WorkbenchLogs = WorkbenchLogs(home),
 ) {
     val backend = awaitProbeValue("the backend project", {
-        runCatching { driver.singleProject(RdTarget.BACKEND) }.getOrNull()?.takeIf { it.isInitialized() }
+        driver.getOpenProjects(RdTarget.BACKEND).singleOrNull()?.takeIf { it.isInitialized() }
     }) { it != null }!!
     private val servers = driver.service(SplitModeViewsTest.HostedLanguageServersRef::class, backend, RdTarget.BACKEND)
     fun command(name: String): String? = servers.executeCommandForTest(name, "[]")
@@ -32,7 +35,7 @@ internal class WorkbenchProbe(
     fun backendLog(): String = logs.read()
 
     /** A scenario's files and log messages, while retaining the running IDEs. */
-    fun scenario(directory: String) = WorkbenchProbe(driver, project.resolve(directory), home, logs.snapshot())
+    fun scenario(directory: String) = WorkbenchProbe(driver, project.resolve(directory), home, userSettings, logs.snapshot())
 
     /** Fails with what the backend logged around [text], when it logged it. */
     fun assertNotLogged(text: String, failure: String) {
@@ -82,14 +85,22 @@ internal class WorkbenchLogs(private val home: Path, private val starts: Map<Pat
 
 /** Owns a running pair, also usable by a class whose scenarios explicitly reset their state. */
 internal class WorkbenchSession(
+    private val name: String,
     val probe: WorkbenchProbe,
     private val context: IDERemDevTestContext,
     private val run: BackgroundRun,
 ) : AutoCloseable {
     fun test(test: WorkbenchProbe.() -> Unit) {
         try {
-            probe.test()
+            // Browser and list fixtures are weak remote references outside a driver context: kept
+            // alive for the workflow, across the polling helper's delays too.
+            run.driver.withContext { probe.test() }
         } catch (error: Throwable) {
+            // The -probe directory is in CI's IDE log artifacts, outside the disposable system caches.
+            runCatching {
+                val diagnostics = Files.createDirectories(context.paths.testHome.resolve("$name-probe"))
+                run.driver.ui.robotProvider.saveHierarchy(diagnostics.toString(), "ui.html")
+            }.onFailure(error::addSuppressed)
             context.reportHostFailure(error)
             throw error
         }
@@ -128,14 +139,16 @@ internal fun startWorkbenchProbe(
     }
     val run = context.runSplitIde(commands = CommandChain().waitForSmartMode(), open = open)
     try {
-        val probe = WorkbenchProbe(run.driver, project, context.paths.testHome)
+        val probe = WorkbenchProbe(
+            run.driver, project, context.paths.testHome, context.paths.configDir.resolve("codebridge/settings.json"),
+        )
         check(run.driver.isRemDevMode)
         awaitProbeValue(
             "the workbench probe activated",
-            { runCatching { probe.command("probe.uiState") }.getOrNull() }) {
+            { probe.command("probe.uiState") }, retrying = ::isStartupFailure) {
             it != null
         }
-        return WorkbenchSession(probe, context, run)
+        return WorkbenchSession(name, probe, context, run)
     } catch (error: Throwable) {
         context.reportHostFailure(error)
         runCatching { run.closeIdeAndWait() }.onFailure(error::addSuppressed)

@@ -5,7 +5,7 @@ import com.intellij.driver.client.Remote
 import com.intellij.driver.model.RdTarget
 import com.intellij.driver.sdk.Project
 import com.intellij.driver.sdk.invokeAction
-import com.intellij.driver.sdk.singleProject
+import com.intellij.driver.sdk.getOpenProjects
 import com.intellij.driver.sdk.ui.components.common.JCefUI
 import com.intellij.driver.sdk.ui.components.common.editorTabs
 import com.intellij.driver.sdk.ui.components.common.ideFrame
@@ -22,7 +22,6 @@ import me.helvert.codebridge.uitest.*
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import java.nio.file.Files
-import java.util.concurrent.TimeUnit
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.test.assertEquals
@@ -163,21 +162,10 @@ class SplitModeViewsTest {
     private fun stripeButton(containerId: String) =
         "//div[@class='SquareStripeButton' and @accessiblename='CodeBridge.$containerId']"
 
-    /**
-     * Opens a tool window by [click]ing its stripe button until [shown] -- its content is there. A click
-     * while the client is still starting is sometimes lost, so one that showed nothing in a while is
-     * made again; never sooner, as a second click on a window that did open closes it.
-     */
+    /** A stripe button toggles its window: click once, then wait for the content to arrive. */
     private fun open(description: String, click: () -> Unit, shown: () -> Boolean) {
-        repeat(3) {
-            click()
-            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15)
-            while (System.nanoTime() < deadline) {
-                if (shown()) return
-                Thread.sleep(500)
-            }
-        }
-        error("Timed out waiting for $description after three clicks")
+        click()
+        awaitProbeValue(description, shown) { it }
     }
 
     private fun webviewState(servers: HostedLanguageServersRef): String? =
@@ -208,9 +196,9 @@ class SplitModeViewsTest {
             val driver = run.driver
             assertTrue(driver.isRemDevMode, "This must run through a JetBrains Client")
             val servers = driver.service(HostedLanguageServersRef::class, backendProject(driver), RdTarget.BACKEND)
-            awaitValue("the UI probe activated", {
-                runCatching { servers.executeCommandForTest("probe.uiState", "[]") }.getOrNull()
-            }) { it == """{"open":false,"clicks":0,"generation":0}""" }
+            awaitProbeValue("the UI probe activated", {
+                servers.executeCommandForTest("probe.uiState", "[]")
+            }, retrying = ::isStartupFailure) { it == """{"open":false,"clicks":0,"generation":0}""" }
             // Hard references for as long as the test runs: the browser it polls is otherwise a weak one,
             // and the client may collect it between two looks.
             driver.withContext { test(driver, servers) }
@@ -245,42 +233,20 @@ class SplitModeViewsTest {
     }
 
     private fun backendProject(driver: Driver): Project = awaitValue("the backend project", {
-        runCatching { driver.singleProject(RdTarget.BACKEND) }.getOrNull()?.takeIf { it.isInitialized() }
+        driver.getOpenProjects(RdTarget.BACKEND).singleOrNull()?.takeIf { it.isInitialized() }
     }) { it != null }!!
 
-    /**
-     * Clicks the page's Send button until the page has counted the click, [clicks] being its count
-     * before. The driver clicks a point of the browser rather than the element, and on CI one such
-     * click never reached the page; its count says whether one landed, so another is sent only then.
-     */
+    /** Do not replay a message-producing click while its acknowledgement is in flight. */
     private fun clickSend(browser: JCefUI, clicks: Int) {
-        repeat(3) {
-            browser.findElement("//button[@id='send']").click()
-            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
-            while (System.nanoTime() < deadline) {
-                if ("Clicks: ${clicks + 1}" in html(browser)) return
-                Thread.sleep(500)
-            }
+        browser.findElement("//button[@id='send']").click()
+        awaitProbeValue("the page counted Send click ${clicks + 1}", { html(browser) }) {
+            "Clicks: ${clicks + 1}" in it
         }
     }
 
-    private fun <T> awaitValue(description: String, read: () -> T, matches: (T) -> Boolean): T {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(90)
-        var last: T? = null
-        while (System.nanoTime() < deadline) {
-            last = read()
-            if (matches(last)) return last
-            Thread.sleep(500)
-        }
-        error("Timed out waiting for $description; last observed: $last")
-    }
+    private fun <T> awaitValue(description: String, read: () -> T, matches: (T) -> Boolean): T =
+        awaitProbeValue(description, read, matches = matches)
 
-    /**
-     * The page's HTML, or none while it cannot be read, saying why. The driver waits 10 seconds for
-     * the page's document and then throws, which a slow runner's first load can outlast.
-     */
-    private fun html(browser: JCefUI): String = runCatching { browser.getHtml() }.getOrElse {
-        println("Could not read the page: $it")
-        ""
-    }
+    /** Lookup timeouts are retried by [awaitProbeValue], retaining the failure on timeout. */
+    private fun html(browser: JCefUI): String = browser.getHtml()
 }

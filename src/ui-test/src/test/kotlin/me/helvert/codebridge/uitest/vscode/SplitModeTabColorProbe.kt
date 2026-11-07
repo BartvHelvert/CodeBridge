@@ -16,6 +16,7 @@ import com.intellij.ide.starter.runner.Starter
 import com.intellij.tools.ide.performanceTesting.commands.CommandChain
 import com.intellij.tools.ide.performanceTesting.commands.waitForSmartMode
 import me.helvert.codebridge.uitest.Installed
+import me.helvert.codebridge.uitest.awaitProbeValue
 import me.helvert.codebridge.uitest.builtAgainst
 import me.helvert.codebridge.uitest.install
 import me.helvert.codebridge.uitest.runSplitIde
@@ -24,12 +25,13 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import java.nio.file.Files
 import java.nio.file.Path
-import java.util.concurrent.TimeUnit
 import kotlin.io.path.invariantSeparatorsPathString
 import kotlin.io.path.writeText
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /** Split-mode regressions with local fixtures, independent of developer projects and extensions. */
 @ExtendWith(RemoteDevRun::class)
@@ -138,16 +140,8 @@ class SplitModeTabColorProbe {
             driver.utility(TabPresentationRef::class, target).getEditorTabBackgroundColor(project, file)?.getRGB()
         }
 
-    private fun <T> awaitValue(description: String, read: () -> T, matches: (T) -> Boolean): T {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(60)
-        var last: T
-        do {
-            last = read()
-            if (matches(last)) return last
-            Thread.sleep(300)
-        } while (System.nanoTime() < deadline)
-        error("Timed out waiting for $description; last observed: $last")
-    }
+    private fun <T> awaitValue(description: String, read: () -> T, matches: (T) -> Boolean): T =
+        awaitProbeValue(description, read, timeout = 60.seconds, interval = 300.milliseconds, matches = matches)
 
     @Remote("com.intellij.openapi.fileEditor.FileEditorManager")
     interface FileEditorManagerRef {

@@ -124,8 +124,13 @@ tasks.test {
     // Starter resolves out/ide-tests against the working directory. Match the CI cache and log
     // uploads, and the WSL runner, which all expect it at the checkout root rather than this module.
     workingDir = rootProject.layout.projectDirectory.asFile
+    // UI focus and PluginUnderTest's cleanup state belong to one IDE pair at a time.
+    maxParallelForks = 1
+    systemProperty("junit.jupiter.execution.parallel.enabled", "false")
     dependsOn(windowAgentJar)
     systemProperty("codebridge.window.agent", windowAgentJar.flatMap { it.archiveFile }.get().asFile.absolutePath)
+    // Strict timing budgets are opt-in; functional loading is checked on every run.
+    systemProperty("codebridge.ui.test.performance", providers.gradleProperty("uiTestPerformance").getOrElse("false"))
     // The plugin has to exist before it can be installed into an IDE.
     dependsOn(testSandbox, ":runtime:extractHostRuntime", ":buildLspFixture", ":bundled:prepareTestSandbox")
     dependsOn(":buildTextMateFixture", ":buildWorkbenchFixture", ":buildBundlingPluginFixture")
