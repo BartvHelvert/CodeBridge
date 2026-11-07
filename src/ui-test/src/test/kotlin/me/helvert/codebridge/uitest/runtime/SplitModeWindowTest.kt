@@ -130,7 +130,7 @@ class SplitModeWindowTest {
     private fun awaitList(description: String, find: () -> JListUiComponent, item: String): JListUiComponent {
         var list: JListUiComponent? = null
         awaitProbeValue(description, {
-            runCatching { find() }.getOrNull()?.takeIf(UiComponent::present)?.also { list = it }?.items.orEmpty()
+            find().takeIf(UiComponent::present)?.also { list = it }?.items.orEmpty()
         }) { items -> items.any { it.contains(item) } }
         return list!!
     }
