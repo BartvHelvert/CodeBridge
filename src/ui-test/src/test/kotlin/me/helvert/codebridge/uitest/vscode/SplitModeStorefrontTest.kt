@@ -127,9 +127,12 @@ class SplitModeStorefrontTest {
                 optionButton("Enable").click()
                 awaitProbeValue("the probe enabled everywhere again", { optionButton("Disable").present() }) { it }
 
+                // Both the installed row and its details name the extension. Uninstall updates
+                // those asynchronously, so the absence check must tolerate both while waiting.
+                awaitProbeValue("the probe named in its row and details", { probeNames().size }) { it >= 2 }
                 chooseOption(driver, "Uninstall")
                 driver.ui.dialog(title = "Uninstall Extension") { pressButton("Yes") }
-                awaitProbeValue("the probe gone from the page", { x { byVisibleText(PROBE_NAME) }.present() }) { !it }
+                awaitProbeValue("the probe gone from the page", { probeNames().size }) { it == 0 }
                 val empty = x { byVisibleText("No extensions installed yet.") }
                 awaitProbeValue("the empty installed list", { empty.present() }) { it }
                 Unit
@@ -165,9 +168,11 @@ class SplitModeStorefrontTest {
 
     /** The installed probe's row: the first of its name on the page, before its details repeat it. */
     private fun SettingsDialogUiComponent.selectProbe() {
-        awaitProbeValue("the probe's row", { x { byVisibleText(PROBE_NAME) }.present() }) { it }
-        xx { byVisibleText(PROBE_NAME) }.list().first().click()
+        val names = awaitProbeValue("the probe's row", { probeNames() }) { it.isNotEmpty() }
+        names.first().click()
     }
+
+    private fun UiComponent.probeNames() = xx { byVisibleText(PROBE_NAME) }.list()
 
     /**
      * The details' split button, by the text its main part has now. The button alone: its main part
