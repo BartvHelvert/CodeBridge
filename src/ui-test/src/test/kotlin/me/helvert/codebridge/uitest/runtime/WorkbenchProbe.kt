@@ -3,6 +3,7 @@ package me.helvert.codebridge.uitest.runtime
 import com.intellij.driver.client.Driver
 import com.intellij.driver.model.RdTarget
 import com.intellij.driver.sdk.getOpenProjects
+import com.intellij.driver.sdk.ui.components.common.IdeaFrameUI
 import com.intellij.driver.sdk.ui.ui
 import com.intellij.ide.starter.driver.engine.BackgroundRun
 import com.intellij.ide.starter.ide.IDERemDevTestContext
@@ -47,6 +48,15 @@ internal class WorkbenchProbe(
 
 /** A balloon: a message an extension shows, or one of the IDE's own notifications. */
 internal const val BALLOON = $$"//div[@javaclass='com.intellij.ui.BalloonImpl$MyComponent']"
+
+/** Fresh trial clients can put this balloon over a toolbar the test needs to click. */
+internal fun IdeaFrameUI.dismissTrialNotification() {
+    fun trialBalloons() = xx(BALLOON).list().filter {
+        it.hasSubtext("Your free 30-day trial has started!")
+    }
+    trialBalloons().forEach { it.x { byVisibleText("Close") }.click() }
+    awaitProbeValue("the trial notification clear of the toolbar", { trialBalloons().isEmpty() }) { it }
+}
 
 /** Keeps each workflow's project, installation and logs isolated, with one backend/client pair. */
 internal fun withWorkbenchProbe(

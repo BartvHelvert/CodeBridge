@@ -127,6 +127,7 @@ class SplitModeCustomEditorTest {
         fun switcher(editor: String) = frame.x("//div[@class='ActionButtonWithText' and @accessiblename='$editor']")
         /** Opens the switcher, now naming [editor], and chooses [path], a submenu at a time. */
         fun choose(editor: String, vararg path: String) {
+            frame.dismissTrialNotification()
             // The menu, and each submenu opened from it, is a list of its own: the one at [level].
             fun menu(level: Int) = driver.ui.xx("//div[@class='MyList']", JListUiComponent::class.java).list().getOrNull(level)
             // Clicked again while no menu shows: the button ignores a click just after its last menu closed.
