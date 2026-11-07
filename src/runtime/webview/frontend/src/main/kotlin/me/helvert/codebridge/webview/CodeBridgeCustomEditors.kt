@@ -12,6 +12,7 @@ import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionPlaces
 import com.intellij.openapi.actionSystem.DefaultActionGroup
+import com.intellij.openapi.actionSystem.KeepPopupOnPerform
 import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.notification.Notification
@@ -545,6 +546,10 @@ internal class OpenWithCustomEditorGroup : ActionGroup(), DumbAware {
             } else {
                 val shownIn = customEditors.shownIn(tab)?.viewType
                 object : DumbAwareToggleAction(name) {
+                    init {
+                        templatePresentation.keepPopupOnPerform = KeepPopupOnPerform.Never
+                    }
+
                     override fun getActionUpdateThread() = ActionUpdateThread.BGT
                     override fun isSelected(event: AnActionEvent) = type?.viewType == shownIn
                     override fun setSelected(event: AnActionEvent, state: Boolean) = customEditors.reopen(tab, type)
@@ -618,6 +623,12 @@ internal class CustomEditorSwitcher : ActionGroup(), DumbAware {
 
     private fun choice(type: CustomEditorTypeDto?, selected: Boolean, choose: () -> Unit): AnAction =
         object : DumbAwareToggleAction(name(type)) {
+            init {
+                // Choosing an editor replaces the tab, so its menu must close even when ordinary
+                // checkbox menus are configured to stay open.
+                templatePresentation.keepPopupOnPerform = KeepPopupOnPerform.Never
+            }
+
             override fun getActionUpdateThread() = ActionUpdateThread.BGT
             override fun isSelected(event: AnActionEvent) = selected
             override fun setSelected(event: AnActionEvent, state: Boolean) = choose()
