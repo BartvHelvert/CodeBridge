@@ -46,6 +46,8 @@ import kotlinx.coroutines.withContext
 import me.helvert.codebridge.completion.VsCodeCompletions
 import java.awt.Dimension
 import java.awt.Point
+import java.awt.event.FocusAdapter
+import java.awt.event.FocusEvent
 import java.awt.event.MouseEvent
 import javax.swing.SwingUtilities
 import javax.swing.text.View
@@ -76,6 +78,11 @@ internal class CellLanguage(private val project: Project, private val cell: Cell
     private var popup: JBPopup? = null
 
     init {
+        editor.contentComponent.addFocusListener(object : FocusAdapter() {
+            override fun focusLost(event: FocusEvent) {
+                if (!event.isTemporary) cancelCompletion()
+            }
+        })
         editor.addEditorMouseMotionListener(object : EditorMouseMotionListener {
             override fun mouseMoved(event: EditorMouseEvent) = moved(event)
         }, this)
@@ -112,6 +119,8 @@ internal class CellLanguage(private val project: Project, private val cell: Cell
 
     /** Asks for completions at the caret, then shows them; a newer question withdraws this one. */
     private fun complete() {
+        // A typing callback can still be queued when another cell takes focus.
+        if (editor.isDisposed || !editor.contentComponent.isFocusOwner) return
         completionJob?.cancel()
         val (line, column) = positionOf(editor.caretModel.offset)
         completionJob = scope.launch {
@@ -124,6 +133,13 @@ internal class CellLanguage(private val project: Project, private val cell: Cell
             }
             if (items.isNotEmpty()) withContext(Dispatchers.EDT) { showCompletions(items) }
         }
+    }
+
+    /** A lookup belongs to this cell, not whichever cell receives the next Escape or keystroke. */
+    private fun cancelCompletion() {
+        completionJob?.cancel()
+        completionJob = null
+        if (LookupManager.getActiveLookup(editor) != null) LookupManager.getInstance(project).hideActiveLookup()
     }
 
     /**
@@ -328,7 +344,7 @@ internal class CellLanguage(private val project: Project, private val cell: Cell
     private fun positionOf(offset: Int): Pair<Int, Int> = positionOf(editor.document, offset)
 
     override fun dispose() {
-        completionJob?.cancel()
+        cancelCompletion()
         leave(keepPopupUnderMouse = false)
         highlighters.forEach { it.dispose() }
     }

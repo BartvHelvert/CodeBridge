@@ -676,6 +676,41 @@ class SplitModeNotebookTest {
 
     @Test
     @Suppress("UnusedExpression")
+    fun `a completion closes when focus moves to another cell`() =
+        withNotebookProbe("split-mode-notebook-completion-focus", TWO_CELLS) {
+            val frame = driver.ideFrame { }
+            assertEquals("2", command("probe.showNotebook"))
+            val notebook = "//div[@accessiblename='Notebook example.ipynb']"
+            val editors = awaitProbeValue("the notebook's two cell editors", {
+                frame.xx("$notebook//div[@class='EditorComponentImpl']", JEditorUiComponent::class.java).list()
+            }) { it.size == 2 }
+            editors[0].click()
+            editors[0].keyboard {
+                hotKey(KeyEvent.VK_CONTROL, KeyEvent.VK_A)
+                typeText("probeCo")
+            }
+            awaitProbeValue("the first cell's completion", {
+                frame.completionList().let { if (it.present()) it.rawItems else emptyList() }
+            }) { items -> items.any { "probeCompletion" in it } }
+
+            // Inserting a cell moves focus programmatically too: no outside mouse click dismisses
+            // the old lookup. It must not remain to consume the next cell's Escape or typing.
+            val next = driver.cast(editors[1].component, CellFocusRef::class)
+            driver.withContext(OnDispatcher.EDT) { editors[1].component.requestFocus() }
+            awaitProbeValue("the second cell focused", { next.isFocusOwner() }) { it }
+            awaitProbeValue("the previous cell's completion closed", { frame.completionList().present() }) { !it }
+            frame.keyboard { typeText("Z") }
+            awaitProbeValue("typing in the second cell", { editors.map { it.text } }) { it == listOf("probeCo", "Ztwo") }
+            Unit
+        }
+
+    @Remote("java.awt.Component")
+    interface CellFocusRef {
+        fun isFocusOwner(): Boolean
+    }
+
+    @Test
+    @Suppress("UnusedExpression")
     fun `a code cell has its extension's definitions, hovers, completions and problems`() =
         withNotebookProbe("split-mode-notebook-language", LANGUAGE) {
             val frame = driver.ideFrame { }
