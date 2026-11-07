@@ -77,11 +77,14 @@ class SplitModeActivationFailureTest {
     private fun withExtensionsPage(driver: Driver, test: SettingsDialogUiComponent.() -> Unit) {
         val frame = driver.ideFrame { }
         driver.invokeAction("ShowSettings", component = frame.component)
-        frame.settingsDialog {
-            openTreeSettingsSection("VS Code Extensions")
-            awaitProbeValue("the installed section", { x { byVisibleText("Installed") }.present() }) { it }
-            test()
-            cancelButton.click()
+        // Settings navigation polls a remote tree fixture; keep it alive across client GC.
+        driver.withContext {
+            frame.settingsDialog {
+                openTreeSettingsSection("VS Code Extensions")
+                awaitProbeValue("the installed section", { x { byVisibleText("Installed") }.present() }) { it }
+                test()
+                cancelButton.click()
+            }
         }
     }
 
