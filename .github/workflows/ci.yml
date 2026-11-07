@@ -261,6 +261,16 @@ jobs:
           path: out/ide-tests/cache
           key: starter-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.gradle.kts', 'gradle/libs.versions.toml') }}
 
+      - name: Locate Starter's 7-Zip
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $sevenZip = Join-Path $env:ProgramFiles '7-Zip\7z.exe'
+          if (!(Test-Path -LiteralPath $sevenZip -PathType Leaf)) {
+            throw "7-Zip is missing: $sevenZip"
+          }
+          "CODEBRIDGE_SEVEN_ZIP=$sevenZip" >> $env:GITHUB_ENV
+
       # Short of the job's own limit, so the steps below still have time to stop the IDEs and upload
       # what they wrote: a job that runs out of time has its uploads cut off too.
       #

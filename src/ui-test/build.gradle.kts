@@ -160,6 +160,12 @@ tasks.test {
     // The IDE the plugins are built against. Without it Starter downloads the newest 2026.3 build,
     // which changes under us and is not the one the Plugin Verifier checked.
     systemProperty("codebridge.ide.build", libs.versions.idea.get())
+    // Starter otherwise runs `where.exe 7z.exe` with a ten-second timeout, even when 7-Zip is
+    // already installed. CI supplies its validated path to avoid that busy-runner lookup.
+    providers.environmentVariable("CODEBRIDGE_SEVEN_ZIP").orNull?.let {
+        require(file(it).isFile) { "CODEBRIDGE_SEVEN_ZIP is not a file: $it" }
+        systemProperty("ide.starter.7z.path", it)
+    }
     // Where Starter keeps the IDE installers it downloads: in the cache every checkout shares (see
     // the root build script), beside the IDEs the build unpacks.
     val sharedCacheDirectory: File by rootProject.extra
