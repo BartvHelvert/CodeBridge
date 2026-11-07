@@ -643,8 +643,17 @@ internal class CellView(private val project: Project, cell: CellDto, private val
     /** Whether the cell's editor has the focus: the user is typing in it. */
     val editing: Boolean get() = editor.contentComponent.isFocusOwner
 
-    /** Stops editing the cell, which stays selected. */
-    fun quitEdit() = owner.selected(this)
+    /**
+     * Stops editing the cell, which stays selected; a markdown cell is rendered again right away,
+     * whether or not the focus then leaves its editor.
+     */
+    fun quitEdit() {
+        owner.selected(this)
+        if (editingMarkup && !editor.isDisposed) {
+            editingMarkup = false
+            show()
+        }
+    }
 
     val text: String get() = document.text
 
