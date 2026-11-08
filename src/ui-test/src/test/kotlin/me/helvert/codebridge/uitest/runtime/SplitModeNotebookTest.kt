@@ -2,6 +2,7 @@ package me.helvert.codebridge.uitest.runtime
 
 import com.intellij.driver.client.Remote
 import com.intellij.driver.model.OnDispatcher
+import com.intellij.driver.model.RdTarget
 import com.intellij.driver.sdk.invokeAction
 import com.intellij.driver.sdk.ui.components.UiComponent
 import com.intellij.driver.sdk.ui.components.common.JEditorUiComponent
@@ -57,7 +58,10 @@ class SplitModeNotebookTest {
         // logs and screenshots when the next scenario starts a fresh pair.
         val running = session ?: startWorkbenchProbe(
             "split-mode-notebooks-${++sessionCount}", "",
-            traced = "#jb.focus.requests,#me.helvert.codebridge.notebook.CellView,#me.helvert.codebridge.notebook.CellLanguage",
+            // The key dispatcher shows which action, if any, a key reached: a cell's Escape that never
+            // reached the cell's own action left no other trace.
+            traced = "#jb.focus.requests,#me.helvert.codebridge.notebook.CellView,#me.helvert.codebridge.notebook.CellLanguage," +
+                "#com.intellij.openapi.keymap.impl.IdeKeyEventDispatcher",
         ).also { session = it }
         try {
             running.test {
@@ -357,6 +361,24 @@ class SplitModeNotebookTest {
             fun hostCells(cells: String) = awaitProbeValue("the host's copy of the cells: $cells", { command("probe.notebookState") }) {
                 it?.contains(""""example.ipynb":$cells""") == true
             }
+            /**
+             * Where a key sent now would go. The robot's input focus is the client's at the window
+             * manager's level, which the frame's own `isFocused` does not tell: Xvfb has no window
+             * manager, and a frame focused for Swing can still be sent no keys. The pointer's place
+             * matters for the same reason -- an X server with no focused window gives keys to the
+             * window under it. Nothing here may fail the test it is reporting on.
+             */
+            fun keyTarget(cell: UiComponent): String {
+                fun read(what: () -> Any?) = runCatching(what).getOrNull()?.toString() ?: "unknown"
+                val pointer = read {
+                    driver.utility(MouseInfoRef::class, RdTarget.FRONTEND).getPointerInfo()?.getLocation()
+                        ?.let { "${it.x},${it.y}" }
+                }
+                return "cell focused=${read { driver.cast(cell.component, CellFocusRef::class).isFocusOwner() }}, " +
+                    "frame focused=${read { frame.isFocused() }}, " +
+                    "input focus=${read { frame.robot.hasInputFocus() }}, pointer=$pointer"
+            }
+
             /** Rests the mouse on strip [index], above the first cell for 0, and clicks its [button]. */
             fun insert(index: Int, button: String) = driver.withContext {
                 val strip = strips()[index]
@@ -400,8 +422,19 @@ class SplitModeNotebookTest {
                 shown.map { it.text } == listOf("# Top", "one", "mid", "two") &&
                         driver.cast(shown.first().component, CellFocusRef::class).isFocusOwner()
             }) { it }
+            // An open popup is given keys before the focused editor, and keeps an Escape for itself.
+            val popupActive = driver.utility(PopupFactoryRef::class, RdTarget.FRONTEND).getInstance().isPopupActive()
+            // Read on both sides of the Escape: whether the focus the readiness wait saw was still
+            // there when the key went, and whether it came back changed.
+            val cell = editors().first()
+            val before = keyTarget(cell)
             frame.keyboard { key(KeyEvent.VK_ESCAPE) }
-            awaitProbeValue("the markdown cell rendered", ::cells) { it == listOf("one", "mid", "two") }
+            val after = keyTarget(cell)
+            val around = "popup active=$popupActive; before the Escape: $before; after it: $after"
+            println("Escape in the new markdown cell -- $around")
+            awaitProbeValue("the markdown cell rendered ($around)", ::cells) {
+                it == listOf("one", "mid", "two")
+            }
             hostCells("""["# Top","one","mid","two"]""")
             Unit
         }
@@ -710,6 +743,22 @@ class SplitModeNotebookTest {
     @Remote("java.awt.Component")
     interface CellFocusRef {
         fun isFocusOwner(): Boolean
+    }
+
+    @Remote("com.intellij.openapi.ui.popup.JBPopupFactory")
+    interface PopupFactoryRef {
+        fun getInstance(): PopupFactoryRef
+        fun isPopupActive(): Boolean
+    }
+
+    @Remote("java.awt.MouseInfo")
+    interface MouseInfoRef {
+        fun getPointerInfo(): PointerInfoRef?
+    }
+
+    @Remote("java.awt.PointerInfo")
+    interface PointerInfoRef {
+        fun getLocation(): Point
     }
 
     @Test
