@@ -20,8 +20,8 @@ defaults:
     shell: bash
 
 # The cache that checkouts on a machine share (see the root build script), in the workspace rather
-# than the Gradle home: the jobs cache the IDEs in it with steps of their own, keyed on the pinned
-# build, and the Windows jobs move the Gradle home to a Dev Drive only after those steps run.
+# than the Gradle home: verified runtime archives and Starter installers are persisted explicitly.
+# Gradle caches its own IDE archives; unpacked copies would compete for the same cache budget.
 env:
   ORG_GRADLE_PROJECT_codebridgeCacheDir: .codebridge-cache
 
@@ -40,19 +40,16 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      # The IntelliJ Platform Gradle plugin unpacks the IDE the build is pinned to into
-      # `.codebridge-cache/ides` while Gradle configures the build: 4.6 GB, outside the Gradle home
-      # the Gradle action caches, so every job spent minutes on it before its first task. Kept
-      # between runs here, keyed on the pinned build alone.
-      - name: Read the pinned IDE build
-        id: ide
-        run: echo "build=$(sed -n 's/^idea = "\([^"]*\)".*/\1/p' gradle/libs.versions.toml)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache the unpacked IDE
-        uses: actions/cache@v4
+      # Gradle already caches the IDE archives. Also caching unpacked IDEs duplicates GBs
+      # across three operating systems and evicts the downloads we need for reliability.
+      # Shared across checkouts locally, but explicitly persisted on ephemeral CI runners.
+      - name: Restore verified runtime archives
+        id: runtime-cache
+        uses: actions/cache/restore@v4
         with:
-          path: .codebridge-cache/ides
-          key: intellij-ide-${{ runner.os }}-${{ runner.arch }}-${{ steps.ide.outputs.build }}
+          path: .codebridge-cache/vscodium
+          enableCrossOsArchive: true
+          key: vscodium-${{ hashFiles('buildSrc/src/main/kotlin/VsCodium.kt') }}
 
       - uses: actions/setup-java@v5
         with:
@@ -82,6 +79,11 @@ jobs:
           (Get-MpPreference).ExclusionPath
 
       - uses: gradle/actions/setup-gradle@v5
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/master' }}
+
+      - name: Test download recovery
+        run: ./gradlew -p buildSrc test --console=plain
 
       # `freshTest` rather than `test`: a restored build cache can serve test classes compiled
       # against an older `main`, which pass or fail for the wrong reasons. The UI tests are compiled
@@ -98,6 +100,8 @@ jobs:
           name: test-reports-${{ matrix.os }}
           # The test IDEs' own logs too: an icon that fails to load is only logged, not thrown.
           path: |
+            buildSrc/build/reports/tests/
+            buildSrc/build/test-results/
             src/**/build/reports/tests/
             src/**/build/test-results/
             .intellijPlatform/sandbox/*/*/log-test/
@@ -120,16 +124,14 @@ jobs:
 
       - uses: actions/checkout@v5
 
-      # As in the `test` job.
-      - name: Read the pinned IDE build
-        id: ide
-        run: echo "build=$(sed -n 's/^idea = "\([^"]*\)".*/\1/p' gradle/libs.versions.toml)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache the unpacked IDE
-        uses: actions/cache@v4
+      # Shared across checkouts locally, but explicitly persisted on ephemeral CI runners.
+      - name: Restore verified runtime archives
+        id: runtime-cache
+        uses: actions/cache/restore@v4
         with:
-          path: .codebridge-cache/ides
-          key: intellij-ide-${{ runner.os }}-${{ runner.arch }}-${{ steps.ide.outputs.build }}
+          path: .codebridge-cache/vscodium
+          enableCrossOsArchive: true
+          key: vscodium-${{ hashFiles('buildSrc/src/main/kotlin/VsCodium.kt') }}
 
       - uses: actions/setup-java@v5
         with:
@@ -144,6 +146,15 @@ jobs:
 
       - name: Build plugins
         run: ./gradlew buildPlugin :runtime:buildPlugin :bundled:buildPlugin --console=plain
+
+      # This build fetches every platform archive; keep one verified set for all runners.
+      - name: Save verified runtime archives
+        if: github.ref == 'refs/heads/master' && steps.runtime-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .codebridge-cache/vscodium
+          enableCrossOsArchive: true
+          key: ${{ steps.runtime-cache.outputs.cache-primary-key }}
 
       # `verifyPluginStructure` checks the descriptors; `verifyPlugin` runs the Plugin Verifier
       # against the platform the plugins are built with. One plugin at a time: two verifications in
@@ -208,16 +219,14 @@ jobs:
 
       - uses: actions/checkout@v5
 
-      # As in the `test` job.
-      - name: Read the pinned IDE build
-        id: ide
-        run: echo "build=$(sed -n 's/^idea = "\([^"]*\)".*/\1/p' gradle/libs.versions.toml)" >> "$GITHUB_OUTPUT"
-
-      - name: Cache the unpacked IDE
-        uses: actions/cache@v4
+      # Shared across checkouts locally, but explicitly persisted on ephemeral CI runners.
+      - name: Restore verified runtime archives
+        id: runtime-cache
+        uses: actions/cache/restore@v4
         with:
-          path: .codebridge-cache/ides
-          key: intellij-ide-${{ runner.os }}-${{ runner.arch }}-${{ steps.ide.outputs.build }}
+          path: .codebridge-cache/vscodium
+          enableCrossOsArchive: true
+          key: vscodium-${{ hashFiles('buildSrc/src/main/kotlin/VsCodium.kt') }}
 
       - uses: actions/setup-java@v5
         with:
@@ -253,13 +262,21 @@ jobs:
         with:
           cache-read-only: true
 
-      # Starter's downloaded backend and client. The IDE build is pinned in build.gradle.kts, so a
-      # change there is what invalidates them.
-      - name: Cache Starter downloads
-        uses: actions/cache@v4
+      - name: Read the pinned IDE build
+        id: ide
+        run: echo "build=$(sed -n 's/^idea = "\([^"]*\)".*/\1/p' gradle/libs.versions.toml)" >> "$GITHUB_OUTPUT"
+
+      # Keep installers, not the unpacked backend in cache/builds: that duplicates the archive.
+      # Unrelated build script changes must not invalidate these multi-GB downloads.
+      - name: Restore Starter downloads
+        id: starter-cache
+        uses: actions/cache/restore@v4
         with:
-          path: out/ide-tests/cache
-          key: starter-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('build.gradle.kts', 'gradle/libs.versions.toml') }}
+          path: |
+            out/ide-tests/cache
+            !out/ide-tests/cache/builds
+            .codebridge-cache/installers
+          key: starter-${{ runner.os }}-${{ runner.arch }}-${{ steps.ide.outputs.build }}
 
       - name: Locate Starter's 7-Zip
         if: runner.os == 'Windows'
@@ -303,6 +320,18 @@ jobs:
           else
             pkill -9 -f "$GITHUB_WORKSPACE/out/ide-tests/" || true
           fi
+
+      # One shard writes after a successful run; PRs only restore. Failed downloads must not
+      # leave a partial installer in an immutable cache.
+      - name: Save Starter downloads
+        if: github.ref == 'refs/heads/master' && matrix.shard == 1 && steps.starter-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: |
+            out/ide-tests/cache
+            !out/ide-tests/cache/builds
+            .codebridge-cache/installers
+          key: ${{ steps.starter-cache.outputs.cache-primary-key }}
 
       - name: Upload UI test reports
         if: always()

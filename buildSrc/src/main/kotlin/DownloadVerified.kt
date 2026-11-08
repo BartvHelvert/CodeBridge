@@ -7,8 +7,10 @@ import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.TaskAction
 import org.gradle.work.DisableCachingByDefault
 import java.io.File
+import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.net.HttpURLConnection
 import java.net.URI
 import java.nio.file.Files
 import java.nio.file.StandardCopyOption
@@ -26,23 +28,54 @@ abstract class DownloadVerified : DefaultTask() {
     fun download() = downloadVerified(url.get(), sha256.get(), archive.get().asFile)
 }
 
+internal data class DownloadPolicy(
+    val attempts: Int = 4,
+    val backoffMillis: Long = 1_000,
+    val connectTimeoutMillis: Int = 30_000,
+    val readTimeoutMillis: Int = 120_000,
+)
+
 /**
  * Makes [target] the file at [url], unless it already has the SHA-256 [sha256]. Safe for two tasks
  * at once: each fetches to a file of its own and moves it into place whole.
  */
-fun downloadVerified(url: String, sha256: String, target: File) {
+internal fun downloadVerified(url: String, sha256: String, target: File, policy: DownloadPolicy = DownloadPolicy()) {
     // Gradle reruns a download whenever buildSrc changes. Hashing a file already here is far
     // cheaper than fetching it again.
     if (target.isFile && copyHashing(target.inputStream(), OutputStream.nullOutputStream()) == sha256) return
     target.parentFile.mkdirs()
-    val partial = Files.createTempFile(target.parentFile.toPath(), target.name, ".part")
-    try {
-        val actual = copyHashing(URI(url).toURL().openStream(), Files.newOutputStream(partial))
-        if (actual != sha256) throw GradleException("Checksum mismatch for $url: expected $sha256 but got $actual")
-        Files.move(partial, target.toPath(), StandardCopyOption.REPLACE_EXISTING)
-    } finally {
-        Files.deleteIfExists(partial)
+    repeat(policy.attempts) { attempt ->
+        // Each attempt owns its partial file; failures never replace a previously verified archive.
+        val partial = Files.createTempFile(target.parentFile.toPath(), target.name, ".part")
+        try {
+            val connection = URI(url).toURL().openConnection().apply {
+                connectTimeout = policy.connectTimeoutMillis
+                readTimeout = policy.readTimeoutMillis
+            }
+            try {
+                if (connection is HttpURLConnection) {
+                    val status = connection.responseCode
+                    if (status !in 200..299) throw HttpDownloadException(url, status)
+                }
+                val actual = copyHashing(connection.getInputStream(), Files.newOutputStream(partial))
+                if (actual != sha256) throw GradleException("Checksum mismatch for $url: expected $sha256 but got $actual")
+                Files.move(partial, target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                return
+            } finally {
+                (connection as? HttpURLConnection)?.disconnect()
+            }
+        } catch (failure: IOException) {
+            if (attempt == policy.attempts - 1 || (failure is HttpDownloadException && !failure.retryable)) throw failure
+            System.err.println("Download attempt ${attempt + 1}/${policy.attempts} failed for $url: ${failure.message}; retrying")
+        } finally {
+            Files.deleteIfExists(partial)
+        }
+        Thread.sleep(policy.backoffMillis * (1L shl attempt))
     }
+}
+
+private class HttpDownloadException(url: String, status: Int) : IOException("HTTP $status downloading $url") {
+    val retryable = status == 408 || status == 429 || status in 500..599
 }
 
 /** Copies [input] to [output], closing both, and returns the SHA-256 of what passed through. */
