@@ -6,6 +6,7 @@ import com.intellij.driver.sdk.ui.components.elements.*
 import com.intellij.driver.sdk.ui.ui
 import com.intellij.ide.starter.junit5.RemoteDevRun
 import me.helvert.codebridge.uitest.awaitProbeValue
+import me.helvert.codebridge.uitest.focusIdeFrame
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.extension.ExtendWith
 import java.awt.event.KeyEvent
@@ -57,6 +58,9 @@ class SplitModeWindowTest {
             }) { it }
             modal.pressButton("Probe accept")
             answered("modal", "\"Probe accept\"")
+            // On Xvfb no window has the focus once the dialog closes, and a popup opened then closes
+            // as the frame is activated after all.
+            driver.focusIdeFrame()
 
             // A single choice is a list popup at the caret.
             assertEquals("true", command("probe.pick"))
@@ -101,6 +105,7 @@ class SplitModeWindowTest {
             awaitProbeValue("the typed value", { field.text }) { it == "typed in client" }
             input.okButton.click()
             answered("input", "\"typed in client\"")
+            driver.focusIdeFrame()
 
             // A live picker: the extension replaces its items as the user types, and the accepted
             // item must be the one it put there for the final value.

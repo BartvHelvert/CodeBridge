@@ -1,5 +1,6 @@
 package me.helvert.codebridge.uitest
 
+import com.intellij.driver.client.Driver
 import com.intellij.driver.model.OnDispatcher
 import com.intellij.driver.sdk.ManualWaitForIndicators
 import com.intellij.driver.sdk.openFile
@@ -213,21 +214,8 @@ internal fun IDETestContext.runSplitIde(
             run.backendRun.driver.waitForIndicators(STARTUP)
         }
         if (open != null) run.driver.openFile(open, waitForCodeAnalysis = false)
-        // Xvfb has no window manager to give the client's frame back the focus once its connection
-        // dialog closes. Until a click lands on something that asks for it, such as an editor, no
-        // window is focused, and a component asking for the focus in its window, as a new notebook
-        // cell does, never gets it: typing then finds no focus owner. The driver's `ensureFocused`
-        // only calls `toFront`, which raises the frame without focusing it there; a cross-window
-        // `requestFocus` does focus it.
-        val ideFrame = run.driver.ideFrame { }
-        // Another startup window may take focus after the first request. Requesting it again is
-        // idempotent; replaying a click or a keystroke here would not be.
-        waitFor("the client's frame focused", FOCUS) {
-            if (!ideFrame.isFocused()) {
-                run.driver.withContext(OnDispatcher.EDT) { ideFrame.component.requestFocus() }
-            }
-            ideFrame.isFocused()
-        }
+        // The client's connection dialog has just closed.
+        run.driver.focusIdeFrame()
     } catch (e: Throwable) {
         try {
             run.closeSplitIdeAndWait()
@@ -242,6 +230,26 @@ internal fun IDETestContext.runSplitIde(
 private val STARTUP = 6.minutes
 
 private val FOCUS = 30.seconds
+
+/**
+ * Gives the client's frame the focus back after a dialog of its own closed.
+ *
+ * Xvfb has no window manager to do that. Until a click lands on something that asks for it, such as
+ * an editor, no window is focused, and a component asking for the focus in its window, as a new
+ * notebook cell does, never gets it: typing then finds no focus owner. A popup opened meanwhile
+ * closes as soon as the frame is activated after all. The driver's `ensureFocused` only calls
+ * `toFront`, which raises the frame without focusing it there; a cross-window `requestFocus` does
+ * focus it.
+ */
+internal fun Driver.focusIdeFrame() {
+    val ideFrame = ideFrame { }
+    // Another window may take focus after the first request. Requesting it again is idempotent;
+    // replaying a click or a keystroke here would not be.
+    waitFor("the client's frame focused", FOCUS) {
+        if (!ideFrame.isFocused()) withContext(OnDispatcher.EDT) { ideFrame.component.requestFocus() }
+        ideFrame.isFocused()
+    }
+}
 
 /** Request both exits before Starter waits for the client's final run result. */
 internal fun BackgroundRun.closeSplitIdeAndWait() {
