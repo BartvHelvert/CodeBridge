@@ -218,18 +218,31 @@ internal class CodeBridgeCustomEditors(private val project: Project, val scope: 
         // Later: closing a file from inside the listener that heard it open is not allowed. The text
         // goes once the editor is open in its place, so the tab strip is never left empty.
         scope.launch(Dispatchers.EDT) {
-            if (standIn.icon == null) standIn.icon = withContext(Dispatchers.Default) { iconOf(file) }
+            if (standIn.icon == null) awaitIcon(file, standIn)
             manager.openFile(standIn, FileEditorOpenRequest.defaults().withRequestFocus(true))
             for (previous in setOf(shown, file)) if (previous != standIn && manager.isFileOpen(previous)) manager.closeFile(previous)
         }
     }
 
     /**
-     * The backend's icon for [file], for its stand-in's tab, asked for before the tab opens so that
-     * it opens with it. Not waited on for long: a tab late with its icon is better than one late.
+     * Gives [standIn] the backend's icon for [file], asked for before the tab opens so that it opens
+     * with it. Not waited on for long: a tab late with its icon is better than one late. An icon that
+     * comes after the tab opened is drawn on it then; until it does, the tab has the client's own.
      */
+    private suspend fun awaitIcon(file: VirtualFile, standIn: CustomEditorFile) {
+        val icon = scope.async(Dispatchers.Default) { iconOf(file) }
+        standIn.icon = withTimeoutOrNull(ICON_WAIT_MILLIS.milliseconds) { icon.await() }
+        if (standIn.icon != null || icon.isCompleted) return
+        LOG.info("The icon for ${file.name} is late; its tab opens without it")
+        scope.launch(Dispatchers.EDT) {
+            standIn.icon = icon.await() ?: return@launch
+            FileEditorManagerEx.getInstanceEx(project).updateFilePresentation(standIn)
+        }
+    }
+
+    /** The backend's icon for [file], or null for none. */
     private suspend fun iconOf(file: VirtualFile): Icon? = try {
-        withTimeoutOrNull(ICON_WAIT_MILLIS.milliseconds) { CodeBridgeApi.getInstance().fileIcon(project.projectId(), file.rpcId()) }?.icon()
+        CodeBridgeApi.getInstance().fileIcon(project.projectId(), file.rpcId())?.icon()
     } catch (cancelled: CancellationException) {
         throw cancelled
     } catch (failure: Exception) {
