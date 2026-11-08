@@ -161,7 +161,9 @@ class SplitModeStorefrontTest {
         frame.settingsDialog {
             openTreeSettingsSection("VS Code Extensions")
             awaitProbeValue("the installed section", { x { byVisibleText("Installed") }.present() }) { it }
-            test()
+            // List fixtures, such as the gear's menu, are weak remote references outside a driver
+            // context: one expired between its lookup and the read of its items.
+            driver.withContext { test() }
             cancelButton.click()
         }
     }
