@@ -9,10 +9,15 @@ import com.intellij.codeInsight.lookup.LookupManager
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionUpdateThread
+import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.openapi.actionSystem.IdeActions
+import com.intellij.openapi.actionSystem.ex.AnActionListener
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.command.WriteCommandAction
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.Document
 import com.intellij.openapi.editor.colors.CodeInsightColors
 import com.intellij.openapi.editor.colors.TextAttributesKey
@@ -78,6 +83,12 @@ internal class CellLanguage(private val project: Project, private val cell: Cell
     private var popup: JBPopup? = null
 
     init {
+        // A hover may open over an unfocused cell after focus has already moved elsewhere.
+        // Like the IDE's own hovers, dismiss it and any pending reply when editing resumes.
+        ApplicationManager.getApplication().messageBus.connect(this).subscribe(AnActionListener.TOPIC, object : AnActionListener {
+            override fun beforeEditorTyping(c: Char, dataContext: DataContext) = leave(keepPopupUnderMouse = false)
+            override fun beforeActionPerformed(action: AnAction, event: AnActionEvent) = leave(keepPopupUnderMouse = false)
+        })
         editor.contentComponent.addFocusListener(object : FocusAdapter() {
             override fun focusLost(event: FocusEvent) {
                 if (!event.isTemporary) {
@@ -234,6 +245,7 @@ internal class CellLanguage(private val project: Project, private val cell: Cell
 
     /** Shows the hover for [offset] at [point] after [wait], unless the mouse has moved off [range] by then. */
     private fun hover(offset: Int, range: TextRange, point: Point, wait: Duration) {
+        LOG.debug("Hover requested in cell ${cell.handle}, focused=${editor.contentComponent.isFocusOwner}")
         leave(keepPopupUnderMouse = false)
         hovered = range
         val (line, column) = positionOf(offset)
@@ -271,6 +283,7 @@ internal class CellLanguage(private val project: Project, private val cell: Cell
             .setShowBorder(true)
             .createPopup()
         popup = shown
+        LOG.debug("Hover shown in cell ${cell.handle}, focused=${editor.contentComponent.isFocusOwner}")
         shown.show(RelativePoint(editor.contentComponent, Point(point.x, point.y + editor.lineHeight)))
     }
 
@@ -303,6 +316,7 @@ internal class CellLanguage(private val project: Project, private val cell: Cell
         hovered = null
         val shown = popup ?: return
         if (keepPopupUnderMouse && shown.content.mousePosition != null) return
+        LOG.debug("Hover closing in cell ${cell.handle}, visible=${shown.isVisible}")
         shown.cancel()
         popup = null
     }
@@ -355,6 +369,7 @@ internal class CellLanguage(private val project: Project, private val cell: Cell
     }
 
     companion object {
+        private val LOG = Logger.getInstance(CellLanguage::class.java)
         private val HOVER_DELAY = 500.milliseconds
         private const val HOVER_WIDTH = 560
         private const val HOVER_HEIGHT = 360

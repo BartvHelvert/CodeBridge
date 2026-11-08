@@ -57,7 +57,7 @@ class SplitModeNotebookTest {
         // logs and screenshots when the next scenario starts a fresh pair.
         val running = session ?: startWorkbenchProbe(
             "split-mode-notebooks-${++sessionCount}", "",
-            traced = "#jb.focus.requests,#me.helvert.codebridge.notebook.CellView",
+            traced = "#jb.focus.requests,#me.helvert.codebridge.notebook.CellView,#me.helvert.codebridge.notebook.CellLanguage",
         ).also { session = it }
         try {
             running.test {
@@ -733,6 +733,37 @@ class SplitModeNotebookTest {
             awaitProbeValue("the previous cell's hover closed", ::hoverShown) { !it }
             frame.keyboard { key(KeyEvent.VK_ESCAPE) }
             awaitProbeValue("one Escape leaves the second cell's editor", { next.isFocusOwner() }) { !it }
+            Unit
+        }
+
+    @Test
+    @Suppress("UnusedExpression")
+    fun `typing in a markdown cell closes a hover over another cell`() =
+        withNotebookProbe("split-mode-notebook-hover-typing", MARKDOWN) {
+            val frame = driver.ideFrame { }
+            assertEquals("2", command("probe.showNotebook"))
+            val notebook = "//div[@accessiblename='Notebook example.ipynb']"
+            val markdown = awaitProbeValue("the rendered markdown cell", {
+                frame.xx("$notebook//div[@class='MarkdownCellPane']").list().singleOrNull()
+            }) { it != null }!!
+            markdown.doubleClick()
+            val editors = awaitProbeValue("the markdown and code cell editors", {
+                frame.xx("$notebook//div[@class='EditorComponentImpl']", JEditorUiComponent::class.java).list()
+            }) { it.size == 2 }
+            val focused = driver.cast(editors[0].component, CellFocusRef::class)
+            awaitProbeValue("the markdown editor focused", { focused.isFocusOwner() }) { it }
+            // Hover after focus has moved, so clearing the old cell's hover on focus loss is not enough.
+            editors[1].hoverOnPosition(1, 2)
+            fun hoverShown() = driver.ui.xx("//div[@class='JBHtmlPane']").list().any { it.hasSubtext("PROBE HOVER") }
+            awaitProbeValue("the unfocused code cell's hover", ::hoverShown) { it }
+            check(focused.isFocusOwner()) { "Hovering moved focus out of the markdown cell" }
+            frame.keyboard { typeText("X") }
+            awaitProbeValue("typing reaches the markdown editor", { editors[0].text }) { 'X' in it }
+            awaitProbeValue("the hover closed after typing in markdown", ::hoverShown) { !it }
+            frame.keyboard { key(KeyEvent.VK_ESCAPE) }
+            awaitProbeValue("one Escape renders the markdown cell", {
+                frame.xx("$notebook//div[@class='EditorComponentImpl']", JEditorUiComponent::class.java).list().map { it.text }
+            }) { it == listOf("one") }
             Unit
         }
 
