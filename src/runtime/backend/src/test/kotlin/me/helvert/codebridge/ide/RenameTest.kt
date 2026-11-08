@@ -26,6 +26,8 @@ import org.junit.jupiter.api.Test
 import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.concurrent.thread
 import kotlin.io.path.writeText
 import kotlin.test.*
 
@@ -85,6 +87,38 @@ class RenameTest : EditorFixture() {
         assertTrue(sent.any { it.contains(POSITION) && it.endsWith(""","total"]""") }, "Asked with the new name: $sent")
         assertEquals("first line\ncall total", fixture.editor.document.text)
         assertEquals("one total\n", FileDocumentManager.getInstance().getDocument(other)?.text)
+    }
+
+    @Test
+    fun `the extension is asked only once its copy holds the name put back`() = onEdt {
+        val source = open("first line\ncall symbol")
+        register(handle = 4, resolvesLocation = true)
+        val caughtUp = AtomicBoolean(false)
+        val askedEarly = AtomicBoolean(false)
+        answer(
+            location = """{"range":${range(2, 6, 12)},"text":"symbol"}""",
+            edits = mapOf(4 to edit(edit(source, 2, 6, 12, "total"))),
+            beforeEdits = { if (!caughtUp.get()) askedEarly.set(true) },
+        )
+
+        renamers().single().performRename()
+        val template = template()
+        fixture.type("total")
+        // The host is behind, as on a busy machine: it still holds the typing when the template
+        // finishes, and gets the name put back only after the editor's usual wait has passed.
+        features.documentChanged(source, HostedLanguageFeatures.Snapshot("first line\ncall total", false))
+        thread {
+            Thread.sleep(3_000)
+            caughtUp.set(true)
+            features.documentChanged(source, HostedLanguageFeatures.Snapshot("first line\ncall symbol", false))
+        }
+        finish(template)
+        PlatformTestUtil.waitWithEventsDispatching("the rename applied", {
+            sent.any { it.endsWith(""","total"]""") } && fixture.editor.document.text == "first line\ncall total"
+        }, 20)
+
+        assertFalse(askedEarly.get(), "The extension was asked while its copy still held the typing")
+        assertEquals("first line\ncall total", fixture.editor.document.text)
     }
 
     @Test
@@ -221,15 +255,15 @@ class RenameTest : EditorFixture() {
 
     /**
      * Answers rename requests: [location] for every provider, each provider's own [edits], and the
-     * document [highlights] for every highlight provider.
+     * document [highlights] for every highlight provider; [beforeEdits] runs as edits are asked for.
      */
-    private fun answer(location: String?, edits: Map<Int, String>, highlights: String = "[]") {
+    private fun answer(location: String?, edits: Map<Int, String>, highlights: String = "[]", beforeEdits: () -> Unit = {}) {
         features.callHostForTest { _, method, args, _ ->
             sent.add(args)
             val handle = args.removePrefix("[").substringBefore(",").toInt()
             when (method) {
                 $$"$resolveRenameLocation" -> location ?: "null"
-                $$"$provideRenameEdits" -> edits[handle] ?: "null"
+                $$"$provideRenameEdits" -> edits[handle].also { beforeEdits() } ?: "null"
                 $$"$provideDocumentHighlights" -> highlights
                 else -> "null"
             }

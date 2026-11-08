@@ -265,8 +265,13 @@ internal class CodeBridgeRenamer(
 
     private fun edits(request: Request, newName: String, text: String): HostedLanguageFeatures.RenameResult {
         // After a template, the typing and its reverting are still on their way to the host;
-        // an extension asked before they land answers about the name half typed.
-        features.awaitMirrored(file, text)
+        // an extension asked before they land answers about the name half typed, and its edit,
+        // made for that text, then lands on the wrong characters of this one. Waited for as long
+        // as the rename's progress shows, which can be cancelled, not the usual moment: on a busy
+        // machine the reverting took longer than that, and the stale edit was applied.
+        if (!features.awaitMirrored(file, text, MIRROR_WAIT_MILLIS)) {
+            return HostedLanguageFeatures.RenameResult(null, listOf(NOT_CAUGHT_UP))
+        }
         return features.renameEdits(file, request.line, request.column, newName, request.plan)
     }
 
@@ -301,5 +306,7 @@ internal class CodeBridgeRenamer(
         const val TITLE = "Rename"
         const val PRIMARY = "NAME"
         const val OTHER = "OCCURRENCE"
+        const val MIRROR_WAIT_MILLIS = 30_000L
+        const val NOT_CAUGHT_UP = "Nothing was renamed: the extension had not caught up with the editor's text."
     }
 }
