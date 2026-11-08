@@ -194,7 +194,7 @@ class SplitModeExtensionTest {
             throw error
         } finally {
             try {
-                run.closeIdeAndWait()
+                run.closeSplitIdeAndWait()
             } catch (closeError: Throwable) {
                 // Keep the failed UI assertion as the primary error if IDE shutdown also fails.
                 if (failure == null) throw closeError
