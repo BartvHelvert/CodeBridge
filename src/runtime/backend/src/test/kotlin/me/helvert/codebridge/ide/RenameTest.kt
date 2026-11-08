@@ -93,12 +93,13 @@ class RenameTest : EditorFixture() {
     fun `the extension is asked only once its copy holds the name put back`() = onEdt {
         val source = open("first line\ncall symbol")
         register(handle = 4, resolvesLocation = true)
-        val caughtUp = AtomicBoolean(false)
         val askedEarly = AtomicBoolean(false)
         answer(
             location = """{"range":${range(2, 6, 12)},"text":"symbol"}""",
             edits = mapOf(4 to edit(edit(source, 2, 6, 12, "total"))),
-            beforeEdits = { if (!caughtUp.get()) askedEarly.set(true) },
+            // Whoever brought the host up to date: the language servers' document listener does
+            // too, when another test in this project has started it.
+            beforeEdits = { if (!features.isCurrent(source, null)) askedEarly.set(true) },
         )
 
         renamers().single().performRename()
@@ -106,16 +107,17 @@ class RenameTest : EditorFixture() {
         fixture.type("total")
         // The host is behind, as on a busy machine: it still holds the typing when the template
         // finishes, and gets the name put back only after the editor's usual wait has passed.
+        val features = features
         features.documentChanged(source, HostedLanguageFeatures.Snapshot("first line\ncall total", false))
-        thread {
+        val catchingUp = thread {
             Thread.sleep(3_000)
-            caughtUp.set(true)
             features.documentChanged(source, HostedLanguageFeatures.Snapshot("first line\ncall symbol", false))
         }
         finish(template)
         PlatformTestUtil.waitWithEventsDispatching("the rename applied", {
             sent.any { it.endsWith(""","total"]""") } && fixture.editor.document.text == "first line\ncall total"
         }, 20)
+        catchingUp.join()
 
         assertFalse(askedEarly.get(), "The extension was asked while its copy still held the typing")
         assertEquals("first line\ncall total", fixture.editor.document.text)
