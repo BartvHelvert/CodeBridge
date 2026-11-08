@@ -94,8 +94,8 @@ internal class CustomEditorDefaults(private val project: Project, private val sc
 
     /**
      * Makes [viewType] what files matching [pattern] open in, in the user's settings, as VS Code's
-     * *Set Default* does: a write VS Code would make too, in the file both read. Null once written,
-     * else why it was not; the change is then heard as any other edit of the file.
+     * *Set Default* does: a write VS Code would make too, in the file both read. Null once written and
+     * applied, else why it was not.
      */
     suspend fun setDefault(pattern: String, viewType: String): String? = withContext(Dispatchers.IO) {
         val file = CodeBridgeUserSettings.file
@@ -115,6 +115,9 @@ internal class CustomEditorDefaults(private val project: Project, private val sc
             LOG.info("Could not set the default editor for $pattern", error)
             return@withContext "Could not change your VS Code user settings: ${error.message}"
         }
+        // Applied before this returns, rather than once the file's change is heard: a file opened
+        // in between opened in the old default, and its editor was replaced as the types changed.
+        if (current.value != null) apply()
         null
     }
 
@@ -123,15 +126,18 @@ internal class CustomEditorDefaults(private val project: Project, private val sc
 
     private fun reread() {
         if (current.value == null) return
-        scope.launch(rereading) {
-            val before = current.value ?: return@launch
-            val after = CustomEditorContributions.setup(project)
-            current.value = after
-            if (after == before) return@launch
-            withContext(Dispatchers.EDT + ModalityState.nonModal().asContextElement()) {
-                WriteAction.run<RuntimeException> {
-                    FileTypeManagerEx.getInstanceEx().makeFileTypesChange("CodeBridge custom editors changed") {}
-                }
+        scope.launch { apply() }
+    }
+
+    /** Reads the setup again and, if it changed, types files afresh by it. */
+    private suspend fun apply() = withContext(rereading) {
+        val before = current.value ?: return@withContext
+        val after = CustomEditorContributions.setup(project)
+        current.value = after
+        if (after == before) return@withContext
+        withContext(Dispatchers.EDT + ModalityState.nonModal().asContextElement()) {
+            WriteAction.run<RuntimeException> {
+                FileTypeManagerEx.getInstanceEx().makeFileTypesChange("CodeBridge custom editors changed") {}
             }
         }
     }
