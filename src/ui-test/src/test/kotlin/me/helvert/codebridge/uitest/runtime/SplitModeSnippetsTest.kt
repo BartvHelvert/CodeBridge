@@ -89,9 +89,18 @@ class SplitModeSnippetsTest {
             }
 
             // The placeholder is selected, so typing replaces it; Tab then goes to the body.
+            editor.keyboard { key(KeyEvent.VK_ENTER) }
+            awaitProbeValue("the snippet's placeholder selected", { editor.getSelection() }) { it == "name" }
+            editor.keyboard { typeText("Widget") }
+            // The template runs on the backend, which Tab has to reach after the typing: on CI a Tab
+            // sent with it was taken as an indent, after the placeholder, with the template still on.
+            awaitProbeValue("the typed placeholder on the backend", {
+                driver.withContext(OnDispatcher.EDT) {
+                    driver.service(SplitModeWorkbenchTest.EditorFactoryRef::class, RdTarget.BACKEND).getAllEditors()
+                        .map { it.getDocument().getText() }
+                }
+            }) { documents -> documents.any { "PROBE Widget {" in it } }
             editor.keyboard {
-                key(KeyEvent.VK_ENTER)
-                typeText("Widget")
                 key(KeyEvent.VK_TAB)
                 typeText("body")
             }
