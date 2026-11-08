@@ -8,6 +8,7 @@ import com.intellij.ide.starter.junit5.RemoteDevRun
 import com.intellij.ide.starter.runner.Starter
 import me.helvert.codebridge.uitest.Installed
 import me.helvert.codebridge.uitest.builtAgainst
+import me.helvert.codebridge.uitest.closeSplitIdeAndWait
 import me.helvert.codebridge.uitest.install
 import me.helvert.codebridge.uitest.runSplitIde
 import org.junit.jupiter.api.Test
@@ -63,7 +64,7 @@ class SplitModeSmokeTest {
             // to the backend's project.
             run.driver.ideFrame { }
         } finally {
-            run.closeIdeAndWait()
+            run.closeSplitIdeAndWait()
         }
     }
 

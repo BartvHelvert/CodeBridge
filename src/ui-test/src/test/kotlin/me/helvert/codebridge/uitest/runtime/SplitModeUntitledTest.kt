@@ -14,6 +14,7 @@ import com.intellij.tools.ide.performanceTesting.commands.CommandChain
 import com.intellij.tools.ide.performanceTesting.commands.waitForSmartMode
 import me.helvert.codebridge.uitest.Installed
 import me.helvert.codebridge.uitest.builtAgainst
+import me.helvert.codebridge.uitest.closeSplitIdeAndWait
 import me.helvert.codebridge.uitest.install
 import me.helvert.codebridge.uitest.runSplitIde
 import org.junit.jupiter.api.Test
@@ -68,7 +69,7 @@ class SplitModeUntitledTest {
             }
             assertTrue(CONTENT in shown, "The client's editor shows '$shown', not the untitled buffer")
         } finally {
-            run.closeIdeAndWait()
+            run.closeSplitIdeAndWait()
         }
     }
 

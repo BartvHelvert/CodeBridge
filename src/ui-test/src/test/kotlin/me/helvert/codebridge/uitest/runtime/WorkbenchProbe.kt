@@ -116,7 +116,7 @@ internal class WorkbenchSession(
         }
     }
 
-    override fun close() = run.closeIdeAndWait()
+    override fun close() = run.closeSplitIdeAndWait()
 }
 
 internal fun startWorkbenchProbe(
@@ -161,7 +161,7 @@ internal fun startWorkbenchProbe(
         return WorkbenchSession(name, probe, context, run)
     } catch (error: Throwable) {
         context.reportHostFailure(error)
-        runCatching { run.closeIdeAndWait() }.onFailure(error::addSuppressed)
+        runCatching { run.closeSplitIdeAndWait() }.onFailure(error::addSuppressed)
         throw error
     }
 }

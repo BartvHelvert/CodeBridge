@@ -83,7 +83,7 @@ class SplitModeBundledExtensionTest {
             throw error
         } finally {
             try {
-                run.closeIdeAndWait()
+                run.closeSplitIdeAndWait()
             } catch (closeError: Throwable) {
                 if (failure == null) throw closeError
                 failure.addSuppressed(closeError)

@@ -15,6 +15,7 @@ import com.intellij.tools.ide.performanceTesting.commands.waitForSmartMode
 import me.helvert.codebridge.uitest.Installed
 import me.helvert.codebridge.uitest.awaitProbeValue
 import me.helvert.codebridge.uitest.builtAgainst
+import me.helvert.codebridge.uitest.closeSplitIdeAndWait
 import me.helvert.codebridge.uitest.install
 import me.helvert.codebridge.uitest.runSplitIde
 import org.junit.jupiter.api.Test
@@ -75,7 +76,7 @@ class SplitModeAttachRunTest {
             select(launch)
             awaitProbeValue("Run back for '$LAUNCH'", { showing("run.svg") }) { it }
         } finally {
-            run.closeIdeAndWait()
+            run.closeSplitIdeAndWait()
         }
     }
 

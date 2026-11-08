@@ -18,6 +18,7 @@ import com.intellij.tools.ide.performanceTesting.commands.waitForSmartMode
 import me.helvert.codebridge.uitest.Installed
 import me.helvert.codebridge.uitest.awaitProbeValue
 import me.helvert.codebridge.uitest.builtAgainst
+import me.helvert.codebridge.uitest.closeSplitIdeAndWait
 import me.helvert.codebridge.uitest.install
 import me.helvert.codebridge.uitest.runSplitIde
 import me.helvert.codebridge.uitest.useShortClientSystemDir
@@ -68,7 +69,7 @@ class SplitModeTabColorProbe {
             throw error
         } finally {
             try {
-                run.closeIdeAndWait()
+                run.closeSplitIdeAndWait()
             } catch (closeError: Throwable) {
                 if (failure == null) throw closeError
                 failure.addSuppressed(closeError)
@@ -94,7 +95,7 @@ class SplitModeTabColorProbe {
             }) { values -> values.any { it.contains("Circle") } }
             assertTrue(texts.any { it.contains("Shape") })
         } finally {
-            run.closeIdeAndWait()
+            run.closeSplitIdeAndWait()
         }
     }
 

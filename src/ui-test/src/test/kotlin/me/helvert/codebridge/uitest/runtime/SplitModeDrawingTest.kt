@@ -15,6 +15,7 @@ import com.intellij.tools.ide.performanceTesting.commands.CommandChain
 import com.intellij.tools.ide.performanceTesting.commands.waitForSmartMode
 import me.helvert.codebridge.uitest.Installed
 import me.helvert.codebridge.uitest.builtAgainst
+import me.helvert.codebridge.uitest.closeSplitIdeAndWait
 import me.helvert.codebridge.uitest.install
 import me.helvert.codebridge.uitest.runSplitIde
 import org.junit.jupiter.api.Test
@@ -87,7 +88,7 @@ class SplitModeDrawingTest {
             val drawn = await(driver) { it.contains(MESSAGE) }
             assertTrue(drawn.isNotEmpty(), "The client drew no highlight carrying '$MESSAGE'")
         } finally {
-            run.closeIdeAndWait()
+            run.closeSplitIdeAndWait()
         }
     }
 
@@ -140,7 +141,7 @@ class SplitModeDrawingTest {
             println("client colour over `replace`: $seen")
             assertTrue(seen != null, "The client drew nothing over the token the backend coloured")
         } finally {
-            run.closeIdeAndWait()
+            run.closeSplitIdeAndWait()
         }
     }
 

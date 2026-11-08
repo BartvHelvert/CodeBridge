@@ -230,7 +230,7 @@ internal fun IDETestContext.runSplitIde(
         }
     } catch (e: Throwable) {
         try {
-            run.closeIdeAndWait()
+            run.closeSplitIdeAndWait()
         } catch (closeError: Throwable) {
             e.addSuppressed(closeError)
         }
