@@ -324,9 +324,12 @@ jobs:
         uses: actions/upload-artifact@v5
         with:
           name: ui-test-ide-logs-${{ matrix.os }}-${{ matrix.shard }}
+          # The test JVM's timeout dumps live under the hidden .intellijPlatform directory.
+          include-hidden-files: true
           path: |
             out/ide-tests/tests/*/*/*-test/
             out/ide-tests/tests/*/*/*-probe/
+            .intellijPlatform/sandbox/ui-test/*/log-test/
             !out/ide-tests/tests/**/heap-dump/
             out/resource-usage.log
           retention-days: 7

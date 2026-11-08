@@ -243,6 +243,33 @@ private val STARTUP = 6.minutes
 
 private val FOCUS = 30.seconds
 
+/** Request both exits before Starter waits for the client's final run result. */
+internal fun BackgroundRun.closeSplitIdeAndWait() {
+    val halves = if (this is RemoteDevBackgroundRun) listOf(this, backendRun) else listOf(this)
+    // The client process can already be gone while Starter is still collecting its result.
+    // Waiting there first leaves the backend running for the whole five-minute result timeout.
+    val requests = halves.mapNotNull { half ->
+        runCatching {
+            if (half.process.isAlive) half.driver.exitApplication()
+        }.exceptionOrNull()
+    }
+    try {
+        // A driver disconnects before its process finishes. Starter treats that interval as
+        // a broken connection, so observe process exit before asking it to collect the results.
+        awaitProbeValue("the test IDE processes exited", {
+            halves.map { it.process.isAlive }
+        }, timeout = 1.minutes) { alive -> alive.none { it } }
+        // Keep Starter's exit-code and run-result checks, including its cleanup on failure.
+        closeIdeAndWait()
+    } catch (error: Throwable) {
+        requests.forEach(error::addSuppressed)
+        runCatching { forceKill() }.onFailure(error::addSuppressed)
+        throw error
+    }
+    // A process may disconnect before acknowledging exit. Successful final checks above
+    // establish that it stopped; a request's transport error alone is not a failed shutdown.
+}
+
 /** The registry key for `JdkAuto`, which sets up a JDK for a project that names none or an unknown one. */
 private const val JDK_AUTO_SETUP = "jdk.auto.setup"
 

@@ -394,10 +394,13 @@ class SplitModeNotebookTest {
             // own, though another cell's editor had the focus last.
             insert(0, "Add Markdown Cell")
             awaitProbeValue("the new markdown cell first, being edited", ::cells) { it == listOf("", "one", "mid", "two") }
-            frame.keyboard {
-                typeText("# Top")
-                key(KeyEvent.VK_ESCAPE)
-            }
+            frame.keyboard { typeText("# Top") }
+            awaitProbeValue("the markdown text and focus ready for Escape", {
+                val shown = editors()
+                shown.map { it.text } == listOf("# Top", "one", "mid", "two") &&
+                        driver.cast(shown.first().component, CellFocusRef::class).isFocusOwner()
+            }) { it }
+            frame.keyboard { key(KeyEvent.VK_ESCAPE) }
             awaitProbeValue("the markdown cell rendered", ::cells) { it == listOf("one", "mid", "two") }
             hostCells("""["# Top","one","mid","two"]""")
             Unit
@@ -708,6 +711,30 @@ class SplitModeNotebookTest {
     interface CellFocusRef {
         fun isFocusOwner(): Boolean
     }
+
+    @Test
+    @Suppress("UnusedExpression")
+    fun `a hover closes when focus moves to another cell`() =
+        withNotebookProbe("split-mode-notebook-hover-focus", TWO_CELLS) {
+            val frame = driver.ideFrame { }
+            assertEquals("2", command("probe.showNotebook"))
+            val editors = awaitProbeValue("the notebook's two cell editors", {
+                frame.xx("//div[@accessiblename='Notebook example.ipynb']//div[@class='EditorComponentImpl']", JEditorUiComponent::class.java).list()
+            }) { it.size == 2 }
+            fun hoverShown() = driver.ui.xx("//div[@class='JBHtmlPane']").list().any { it.hasSubtext("PROBE HOVER") }
+            editors[0].click()
+            editors[0].hoverOnPosition(1, 2)
+            awaitProbeValue("the first cell's hover", ::hoverShown) { it }
+
+            // Keep the pointer over the old cell: focus transfer alone must clear its popup.
+            val next = driver.cast(editors[1].component, CellFocusRef::class)
+            driver.withContext(OnDispatcher.EDT) { editors[1].component.requestFocus() }
+            awaitProbeValue("the second cell focused", { next.isFocusOwner() }) { it }
+            awaitProbeValue("the previous cell's hover closed", ::hoverShown) { !it }
+            frame.keyboard { key(KeyEvent.VK_ESCAPE) }
+            awaitProbeValue("one Escape leaves the second cell's editor", { next.isFocusOwner() }) { !it }
+            Unit
+        }
 
     @Test
     @Suppress("UnusedExpression")

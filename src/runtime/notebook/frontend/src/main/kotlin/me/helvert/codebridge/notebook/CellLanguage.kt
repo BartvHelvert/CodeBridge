@@ -80,7 +80,12 @@ internal class CellLanguage(private val project: Project, private val cell: Cell
     init {
         editor.contentComponent.addFocusListener(object : FocusAdapter() {
             override fun focusLost(event: FocusEvent) {
-                if (!event.isTemporary) cancelCompletion()
+                if (!event.isTemporary) {
+                    cancelCompletion()
+                    // A non-focusable hover can otherwise survive a programmatic move to the
+                    // next cell and consume that cell's first Escape before its action sees it.
+                    leave(keepPopupUnderMouse = false)
+                }
             }
         })
         editor.addEditorMouseMotionListener(object : EditorMouseMotionListener {
