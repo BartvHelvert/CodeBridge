@@ -108,6 +108,19 @@ jobs:
           include-hidden-files: true
           retention-days: 14
 
+      # setup-gradle saves the Gradle home after a failed job too, and caches each wrapper
+      # distribution's directory under a key that never changes. A download that timed out left
+      # only its lock and partial files there; saved, that entry was restored to every later job,
+      # which downloaded Gradle again and could not replace it. A complete distribution has its
+      # `.ok` marker: anything else is removed before the save.
+      - name: Drop incomplete Gradle downloads
+        if: failure() && github.ref == 'refs/heads/master'
+        run: |
+          for dist in "${GRADLE_USER_HOME:-$HOME/.gradle}"/wrapper/dists/*/*/; do
+            [ -d "$dist" ] || continue
+            ls "$dist"*.ok > /dev/null 2>&1 || { echo "Removing incomplete $dist"; rm -rf "$dist"; }
+          done
+
   # What the tests never look at: the descriptors only fail when an IDE loads them, and the
   # distributions are only assembled here.
   plugin:
