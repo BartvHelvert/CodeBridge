@@ -26,30 +26,6 @@ plugins {
 val pluginModules = subprojects.filter { it.name !in setOf("ui-test", "runtime", "bundled") }
 
 /**
- * Shows the IDE each module once, as a module, rather than also as a library of its own jar.
- *
- * The IntelliJ Platform module plugin asks every project dependency for the module's composed jar,
- * `CodeBridge.<module>.jar`, which ends up on the runtime classpaths. The IDE cannot trace that jar
- * back to the module's sources, so a sync lists it as a library beside the module dependency, and
- * every class shows up twice: once in the sources, once in a jar as old as the last build. During
- * a sync alone, project dependencies ask for the plain jar instead, which the IDE does recognise.
- * Builds, tests and the sandboxes still use the composed jar.
- */
-if (System.getProperty("idea.sync.active").toBoolean()) {
-    allprojects {
-        pluginManager.withPlugin("org.jetbrains.intellij.platform.module") {
-            configurations.configureEach {
-                dependencies.withType<ProjectDependency>().configureEach {
-                    attributes {
-                        attribute(LibraryElements.LIBRARY_ELEMENTS_ATTRIBUTE, objects.named(LibraryElements.JAR))
-                    }
-                }
-            }
-        }
-    }
-}
-
-/**
  * What every checkout on a machine can share rather than fetch or unpack again: worktrees and fresh
  * clones start from it. `-PcodebridgeCacheDir=<dir>` puts it elsewhere, a relative path being one in
  * the checkout; by default it is in the Gradle user home, where WSL keeps its Linux IDEs apart from
