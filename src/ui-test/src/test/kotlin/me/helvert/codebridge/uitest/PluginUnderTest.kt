@@ -251,22 +251,21 @@ internal fun Driver.focusIdeFrame() {
     }
 }
 
-/** Request both exits before Starter waits for the client's final run result. */
+/** Stops the client, then the backend, before Starter waits for the client's final run result. */
 internal fun BackgroundRun.closeSplitIdeAndWait() {
-    val halves = if (this is RemoteDevBackgroundRun) listOf(this, backendRun) else listOf(this)
+    val halves = if (this is RemoteDevBackgroundRun) listOf("client" to this, "backend" to backendRun) else listOf("IDE" to this)
     // The client process can already be gone while Starter is still collecting its result.
     // Waiting there first leaves the backend running for the whole five-minute result timeout.
-    val requests = halves.mapNotNull { half ->
-        runCatching {
-            if (half.process.isAlive) half.driver.exitApplication()
-        }.exceptionOrNull()
-    }
+    // One at a time, though: the client's exit starts by disconnecting from the backend, and a
+    // backend asked to exit meanwhile left the client reconnecting to it, never exiting.
+    val requests = mutableListOf<Throwable>()
     try {
-        // A driver disconnects before its process finishes. Starter treats that interval as
-        // a broken connection, so observe process exit before asking it to collect the results.
-        awaitProbeValue("the test IDE processes exited", {
-            halves.map { it.process.isAlive }
-        }, timeout = 1.minutes) { alive -> alive.none { it } }
+        for ((name, half) in halves) {
+            if (half.process.isAlive) runCatching { half.driver.exitApplication() }.onFailure(requests::add)
+            // A driver disconnects before its process finishes. Starter treats that interval as
+            // a broken connection, so observe process exit before asking it to collect the results.
+            awaitProbeValue("the test $name process exited", { half.process.isAlive }, timeout = 1.minutes) { !it }
+        }
         // Keep Starter's exit-code and run-result checks, including its cleanup on failure.
         closeIdeAndWait()
     } catch (error: Throwable) {
