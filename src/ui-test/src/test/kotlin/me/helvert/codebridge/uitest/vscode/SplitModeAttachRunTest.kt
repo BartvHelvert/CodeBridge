@@ -7,6 +7,9 @@ import com.intellij.driver.model.RdTarget
 import com.intellij.driver.sdk.Project
 import com.intellij.driver.sdk.singleProject
 import com.intellij.driver.sdk.ui.components.common.ideFrame
+import com.intellij.driver.sdk.ui.components.common.mainToolbar
+import com.intellij.driver.sdk.ui.components.common.popups.runConfigurationsList
+import com.intellij.driver.sdk.ui.components.common.popups.runConfigurationsPopup
 import com.intellij.ide.starter.ide.IDERemDevTestContext
 import com.intellij.ide.starter.junit5.RemoteDevRun
 import com.intellij.ide.starter.runner.Starter
@@ -59,21 +62,31 @@ class SplitModeAttachRunTest {
             val runManager = driver.service(RunManagerRef::class, driver.singleProject(RdTarget.FRONTEND), RdTarget.FRONTEND)
             // The configurations follow launch.json once the project has opened, which may be after the driver connects,
             // and reach the client after that.
-            val launch = awaitProbeValue("'$LAUNCH' as a run configuration", { runManager.findConfigurationByName(LAUNCH) }) { it != null }!!
-            val attach = awaitProbeValue("'$ATTACH' as a run configuration", { runManager.findConfigurationByName(ATTACH) }) { it != null }!!
+            awaitProbeValue("'$LAUNCH' as a run configuration", { runManager.findConfigurationByName(LAUNCH) }) { it != null }
+            awaitProbeValue("'$ATTACH' as a run configuration", { runManager.findConfigurationByName(ATTACH) }) { it != null }
 
             val frame = driver.ideFrame { }
             fun showing(icon: String) = runCatching {
-                driver.withContext { frame.xx("//div[@myicon='$icon']").list().any { it.component.isShowing() } }
+                driver.withContext { frame.mainToolbar.xx("//div[@myicon='$icon']").list().any { it.component.isShowing() } }
             }.getOrDefault(false)
-            fun select(settings: RunnerAndConfigurationSettingsRef) =
-                driver.withContext(OnDispatcher.EDT) { runManager.setSelectedConfiguration(settings) }
+            fun selectedName() = driver.withContext(OnDispatcher.EDT) {
+                runManager.getSelectedConfiguration()?.getName()
+            }
+            fun select(name: String) {
+                // Direct RunManager writes from the driver lack the client's ClientId context.
+                // Use the selector that the toolbar itself supplies.
+                driver.withContext {
+                    frame.runConfigurationsPopup { runConfigurationsList().clickItem(name) }
+                }
+                // A visible Run/Debug pair can still belong to the previous selection.
+                awaitProbeValue("'$name' selected in the client", ::selectedName) { it == name }
+            }
 
-            select(launch)
+            select(LAUNCH)
             awaitProbeValue("Run and Debug for '$LAUNCH'", { showing("run.svg") to showing("debug.svg") }) { it == (true to true) }
-            select(attach)
+            select(ATTACH)
             awaitProbeValue("only Debug for '$ATTACH'", { showing("run.svg") to showing("debug.svg") }) { it == (false to true) }
-            select(launch)
+            select(LAUNCH)
             awaitProbeValue("Run back for '$LAUNCH'", { showing("run.svg") }) { it }
         } finally {
             run.closeSplitIdeAndWait()
@@ -83,11 +96,13 @@ class SplitModeAttachRunTest {
     @Remote("com.intellij.execution.RunManager")
     interface RunManagerRef {
         fun findConfigurationByName(name: String): RunnerAndConfigurationSettingsRef?
-        fun setSelectedConfiguration(settings: RunnerAndConfigurationSettingsRef?)
+        fun getSelectedConfiguration(): RunnerAndConfigurationSettingsRef?
     }
 
     @Remote("com.intellij.execution.RunnerAndConfigurationSettings")
-    interface RunnerAndConfigurationSettingsRef
+    interface RunnerAndConfigurationSettingsRef {
+        fun getName(): String
+    }
 
     /** The project, once the backend has opened it; see `SplitModeDrawingTest.backendProject`. */
     private fun backendProject(driver: Driver): Project =
