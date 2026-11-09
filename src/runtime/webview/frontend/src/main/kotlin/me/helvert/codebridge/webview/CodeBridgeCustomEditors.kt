@@ -190,6 +190,13 @@ internal class CodeBridgeCustomEditors(private val project: Project, val scope: 
             }
             if (problem != null) {
                 Notification(NOTIFICATIONS, "The default editor for '$pattern' was not changed", problem, NotificationType.WARNING).notify(project)
+                return@launch
+            }
+            // Held as soon as it is set, rather than once the backend's changed setup arrives: a
+            // file opened in between opened in the editor the user has just stopped choosing. The
+            // setup that arrives then says the same.
+            withContext(Dispatchers.EDT) {
+                typesChanged(setup.copy(associations = setup.associations + (pattern to viewType)))
             }
         }
     }
