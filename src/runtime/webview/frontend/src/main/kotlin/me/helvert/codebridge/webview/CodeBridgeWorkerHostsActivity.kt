@@ -18,15 +18,18 @@ import kotlin.time.Duration.Companion.milliseconds
  */
 internal class CodeBridgeWorkerHostsActivity : ProjectActivity {
     override suspend fun execute(project: Project) {
-        // Without the browser the backend hears from no client, and says why after a while.
-        if (!JBCefApp.isSupported()) return
+        // Listened for even without the browser, which runs them: the backend times a host out from
+        // the first client listening, and says why. Were this to return, it would wait for a client
+        // that never comes.
+        val browser = JBCefApp.isSupported()
+        if (!browser) LOG.info("No browser (JCEF) to run the web worker extension hosts in")
         coroutineScope {
             val running = HashMap<String, Job>()
             while (isActive) {
                 try {
                     CodeBridgeApi.getInstance().workerHosts(project.projectId()).collect { wanted ->
                         running.entries.removeIf { (id, job) -> (id !in wanted || !job.isActive).also { gone -> if (gone) job.cancel() } }
-                        for (id in wanted) if (id !in running) running[id] = launch { run(project, id) }
+                        if (browser) for (id in wanted) if (id !in running) running[id] = launch { run(project, id) }
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
