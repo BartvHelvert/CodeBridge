@@ -35,6 +35,13 @@ internal class WorkbenchProbe(
     /** What the backend has logged so far: its `idea.log`, not the client's, which is under `frontend`. */
     fun backendLog(): String = logs.read()
 
+    /** Client startup can lose debugger RPC subscriptions before the adapter starts (#147). */
+    fun frontendLog(): String = Files.walk(home).use { paths ->
+        paths.filter { file ->
+            file.fileName.toString() == "idea.log" && home.relativize(file).any { it.toString() == "frontend" }
+        }.toList().joinToString("\n") { it.readText() }
+    }
+
     /** A scenario's files and log messages, while retaining the running IDEs. */
     fun scenario(directory: String) = WorkbenchProbe(driver, project.resolve(directory), home, userSettings, logs.snapshot())
 

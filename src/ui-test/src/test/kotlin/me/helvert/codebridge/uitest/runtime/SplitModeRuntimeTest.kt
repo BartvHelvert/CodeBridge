@@ -26,7 +26,8 @@ class SplitModeRuntimeTest {
         // about how it tried to.
         withWorkbenchProbe(
             "split-mode-runtime", "let value = 1;\nvalue;\n",
-            traced = "#com.intellij.execution.process,#me.helvert.codebridge.task",
+            traced = "#com.intellij.execution.process,#me.helvert.codebridge.task," +
+                "#com.intellij.platform.debugger.impl.frontend.FrontendXDebuggerManager,#com.intellij.platform.dap",
         ) {
             val frame = driver.ideFrame { }
             assertEquals("true", command("probe.startTask"))
@@ -89,8 +90,23 @@ class SplitModeRuntimeTest {
                     tree.collectExpandedPathsAsStrings()
                 }
             }
-            awaitProbeValue("the stopped session's variable in the client", ::variableRows) { rows ->
-                rows.any { it.contains("probeValue") && it.contains("41") }
+            try {
+                awaitProbeValue("the stopped session's variable in the client", ::variableRows) { rows ->
+                    rows.any { it.contains("probeValue") && it.contains("41") }
+                }
+            } catch (failure: AssertionError) {
+                // A startup clock timeout can cancel the client's debugger subscription for good.
+                // Keep the original assertion; attach the earlier failure and adapter state so a
+                // missing tree is not mistaken for a slow variables response.
+                runCatching {
+                    val startup = frontendLog().lineSequence().filter {
+                        it.contains("TimedOutWaitingForClockException") || it.contains("FrontendXDebuggerManager")
+                    }.joinToString("\n") { it.take(2_000) }.take(12_000)
+                    failure.addSuppressed(AssertionError(
+                        "Debugger state: ${command("probe.runtimeState")}\nClient startup:\n$startup"
+                    ))
+                }.onFailure(failure::addSuppressed)
+                throw failure
             }
             driver.act("StepOver", variables)
             awaitProbeValue("step over updating variables in the client", ::variableRows) { rows ->
