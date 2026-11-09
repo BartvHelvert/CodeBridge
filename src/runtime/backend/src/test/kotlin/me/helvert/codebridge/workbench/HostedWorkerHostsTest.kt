@@ -79,6 +79,25 @@ class HostedWorkerHostsTest {
     }
 
     @Test
+    fun `a client listening is told the hosts to run, and is no longer counted once it stops`() = runBlocking {
+        val connection = connection()
+        connection.open({}, {})
+        val id = hosts.wanted.value.single()
+
+        // What a client collects: the hosts wanted now, and each change while it listens.
+        val listened = CompletableDeferred<List<String>>()
+        val client = launch { hosts.hosts().collect { if (it.isNotEmpty()) listened.complete(it) } }
+        assertEquals(listOf(id), withTimeout(5.seconds) { listened.await() })
+        client.cancelAndJoin()
+
+        // Another client is told the same: the first one going left nothing behind.
+        val again = CompletableDeferred<List<String>>()
+        val second = launch { hosts.hosts().collect { if (it.isNotEmpty()) again.complete(it) } }
+        assertEquals(listOf(id), withTimeout(5.seconds) { again.await() })
+        second.cancelAndJoin()
+    }
+
+    @Test
     fun `the host fetches its own script and its extensions' files, and nothing else`() {
         val connection = connection()
         connection.open({}, {})

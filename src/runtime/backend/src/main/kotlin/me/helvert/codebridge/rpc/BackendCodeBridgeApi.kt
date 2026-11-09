@@ -307,7 +307,7 @@ internal class BackendCodeBridgeApi : CodeBridgeApi {
 
     override suspend fun workerHosts(projectId: ProjectId): Flow<List<String>> {
         val project = projectId.findProjectOrNull() ?: return flowOf(emptyList())
-        return HostedWorkerHosts.getInstance(project).wanted
+        return HostedWorkerHosts.getInstance(project).hosts()
     }
 
     override suspend fun workerHostOutbox(projectId: ProjectId, id: String): Flow<List<ByteArray>> {

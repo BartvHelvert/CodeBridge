@@ -9,7 +9,10 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.onCompletion
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
@@ -41,8 +44,20 @@ import kotlin.time.Duration.Companion.seconds
 class HostedWorkerHosts(private val scope: CoroutineScope) {
     private val hosts = ConcurrentHashMap<String, Host>()
 
-    /** The hosts waiting for, or run by, a client; see [me.helvert.codebridge.rpc.CodeBridgeApi.workerHosts]. */
+    /** The hosts waiting for, or run by, a client. */
     val wanted: StateFlow<List<String>> field = MutableStateFlow(emptyList())
+
+    /** How many clients are listening for hosts to run. */
+    private val listening = MutableStateFlow(0)
+
+    /**
+     * [wanted], for as long as a client listens; see [me.helvert.codebridge.rpc.CodeBridgeApi.workerHosts].
+     * A host is only given its time to be claimed while someone listens: until a client has asked
+     * for the hosts, there is nobody who could have run one.
+     */
+    fun hosts(): Flow<List<String>> = wanted
+        .onStart { listening.update { it + 1 } }
+        .onCompletion { listening.update { it - 1 } }
 
     /**
      * A new worker host, run from [installation], whose extensions' files are those under
@@ -122,6 +137,9 @@ class HostedWorkerHosts(private val scope: CoroutineScope) {
             hosts[id] = this
             wanted.update { it + id }
             scope.launch {
+                // Timed from the first client listening, not from here: a client that is still
+                // starting has not been offered the host yet, and failed activation is forever.
+                listening.first { it > 0 }
                 delay(CLAIM_SECONDS.seconds)
                 if (!claimed.get()) finish(IOException(
                     "No client ran the web worker extension host within $CLAIM_SECONDS seconds; it runs in the IDE's browser (JCEF)"
@@ -161,7 +179,7 @@ class HostedWorkerHosts(private val scope: CoroutineScope) {
     }
 
     companion object {
-        /** How long a host waits for a client to run it. */
+        /** How long a host waits for a listening client to run it. */
         private const val CLAIM_SECONDS = 30L
 
         fun getInstance(project: Project): HostedWorkerHosts = project.service()
