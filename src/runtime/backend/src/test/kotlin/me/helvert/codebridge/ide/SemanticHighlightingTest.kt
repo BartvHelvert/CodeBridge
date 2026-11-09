@@ -142,6 +142,11 @@ class SemanticHighlightingTest : EditorFixture() {
         answer(0, 4, 5, PARAMETER, 0)
         register()
         settle()
+        // On the document before the edit, which is the whole point: `settle` waits for the
+        // request, which is done with before the answer is drawn, and the draw is dispatched to
+        // this very thread. Without reading the colouring first -- which drains that -- the edit
+        // comes before the draw, and what the edit is supposed to move is not there to move.
+        assertEquals("alpha", text(semantic().single()), "The colour has to be drawn before the edit moves it")
 
         // A new line above: every word moves down a line. The highlighter moves with it, so the
         // colour is right on the very next frame rather than one round trip later.
