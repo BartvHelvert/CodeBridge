@@ -100,10 +100,14 @@ class SplitModeSnippetsTest {
                         .map { it.getDocument().getText() }
                 }
             }) { documents -> documents.any { "PROBE Widget {" in it } }
-            editor.keyboard {
-                key(KeyEvent.VK_TAB)
-                typeText("body")
+            // Pressed on its own, and again if it never arrived: a key press is taken out of the
+            // queue, and dropped, for as long as the IDE is waiting on a lock. Typing survives
+            // that, so a Tab sent with the text left `body` where the placeholder ended.
+            // See [pressUntil].
+            pressUntil("the snippet's body stop reached", press = { editor.keyboard { key(KeyEvent.VK_TAB) } }) {
+                editor.getCaretLine() == BODY_LINE
             }
+            editor.keyboard { typeText("body") }
             awaitProbeValue("the snippet expanded and its stops typed into", { editor.text.lines() }) { lines ->
                 lines.size >= 4 && lines[0] == "first" && lines[1] == "PROBE Widget {" &&
                         lines[2].isNotEmpty() && lines[2].trim() == "body" && lines[3] == "}"
@@ -122,6 +126,9 @@ class SplitModeSnippetsTest {
     }
 
     private companion object {
+        /** The snippet's body stop, between its braces: the line Tab moves the caret to. */
+        const val BODY_LINE = 3
+
         const val CONTENT = "first\n"
     }
 }
