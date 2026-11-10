@@ -190,6 +190,11 @@ internal fun IDETestContext.runSplitIde(
         addVMOptionsPatch {
             clearSystemProperty("ide.performance.screenshot")
             addSystemProperty("nosplash", true)
+            if (java.lang.Boolean.getBoolean("codebridge.trace.escape")) {
+                val agent = Path.of(checkNotNull(System.getProperty("codebridge.escape.agent")))
+                check(Files.isRegularFile(agent)) { "Escape trace agent does not exist: $agent" }
+                addLine("-javaagent:$agent")
+            }
             if (frame != null) {
                 // Saved project bounds are applied too late in client startup. The test-only agent
                 // places each IDE frame synchronously before its first call into AWT's show().

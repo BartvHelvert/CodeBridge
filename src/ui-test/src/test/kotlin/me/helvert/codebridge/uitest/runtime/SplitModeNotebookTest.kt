@@ -361,22 +361,11 @@ class SplitModeNotebookTest {
             fun hostCells(cells: String) = awaitProbeValue("the host's copy of the cells: $cells", { command("probe.notebookState") }) {
                 it?.contains(""""example.ipynb":$cells""") == true
             }
-            /**
-             * Where a key sent now would go. The robot's input focus is the client's at the window
-             * manager's level, which the frame's own `isFocused` does not tell: Xvfb has no window
-             * manager, and a frame focused for Swing can still be sent no keys. The pointer's place
-             * matters for the same reason -- an X server with no focused window gives keys to the
-             * window under it. Nothing here may fail the test it is reporting on.
-             */
+            /** Passive state only: hasInputFocus() injects a probe key, even with InputEventsRobot. */
             fun keyTarget(cell: UiComponent): String {
                 fun read(what: () -> Any?) = runCatching(what).getOrNull()?.toString() ?: "unknown"
-                val pointer = read {
-                    driver.utility(MouseInfoRef::class, RdTarget.FRONTEND).getPointerInfo()?.getLocation()
-                        ?.let { "${it.x},${it.y}" }
-                }
                 return "cell focused=${read { driver.cast(cell.component, CellFocusRef::class).isFocusOwner() }}, " +
-                    "frame focused=${read { frame.isFocused() }}, " +
-                    "input focus=${read { frame.robot.hasInputFocus() }}, pointer=$pointer"
+                    "frame focused=${read { frame.isFocused() }}"
             }
 
             /** Rests the mouse on strip [index], above the first cell for 0, and clicks its [button]. */
@@ -412,6 +401,18 @@ class SplitModeNotebookTest {
             awaitProbeValue("typing in the new cell", ::cells) { it == listOf("one", "mid", "two") }
             hostCells("""["one","mid","two"]""")
 
+            if (java.lang.Boolean.getBoolean("codebridge.trace.escape")) {
+                // Check before creating the markdown cell, outside the critical Escape sequence.
+                // A failed installation must not masquerade as a key the robot never posted.
+                val properties = driver.utility(TraceSystemRef::class, RdTarget.FRONTEND)
+                for (hook in listOf("java/awt/EventQueue", "java/awt/event/InputEvent", "com/intellij/ide/IdeEventQueue",
+                    "com/jetbrains/performancePlugin/remotedriver/robot/InputEventsRobot")) {
+                    check(properties.getProperty("codebridge.escape.trace.$hook") == "installed") {
+                        "Escape trace hook is not installed: $hook"
+                    }
+                }
+            }
+
             // Above the first, a markdown cell, being edited; Esc renders it. Esc is the new cell's
             // own, though another cell's editor had the focus last.
             insert(0, "Add Markdown Cell")
@@ -423,7 +424,9 @@ class SplitModeNotebookTest {
                         driver.cast(shown.first().component, CellFocusRef::class).isFocusOwner()
             }) { it }
             // An open popup is given keys before the focused editor, and keeps an Escape for itself.
-            val popupActive = driver.utility(PopupFactoryRef::class, RdTarget.FRONTEND).getInstance().isPopupActive()
+            val popupActive = runCatching {
+                driver.utility(PopupFactoryRef::class, RdTarget.FRONTEND).getInstance().isPopupActive()
+            }.getOrNull()
             // Read on both sides of the Escape: whether the focus the readiness wait saw was still
             // there when the key went, and whether it came back changed.
             val cell = editors().first()
@@ -751,14 +754,9 @@ class SplitModeNotebookTest {
         fun isPopupActive(): Boolean
     }
 
-    @Remote("java.awt.MouseInfo")
-    interface MouseInfoRef {
-        fun getPointerInfo(): PointerInfoRef?
-    }
-
-    @Remote("java.awt.PointerInfo")
-    interface PointerInfoRef {
-        fun getLocation(): Point
+    @Remote("java.lang.System")
+    interface TraceSystemRef {
+        fun getProperty(name: String): String?
     }
 
     @Test

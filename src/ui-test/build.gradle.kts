@@ -54,6 +54,35 @@ val windowAgentJar = tasks.register<Jar>("windowAgentJar") {
     from(windowAgent.output)
     manifest.attributes("Premain-Class" to "me.helvert.codebridge.uitest.WindowPlacementAgent")
 }
+
+val escapeAgent = sourceSets.create("escapeAgent")
+val escapeAgentTest = sourceSets.create("escapeAgentTest") {
+    compileClasspath += escapeAgent.output
+    runtimeClasspath += escapeAgent.output
+}
+val escapeTraceSupportJar = tasks.register<Jar>("escapeTraceSupportJar") {
+    archiveClassifier.set("escape-trace-support")
+    from(escapeAgent.output) { include("**/EscapeTrace.class") }
+}
+val escapeTraceAgentJar = tasks.register<Jar>("escapeTraceAgentJar") {
+    archiveClassifier.set("escape-trace-agent")
+    from(escapeAgent.output) { exclude("**/EscapeTrace.class") }
+    dependsOn(escapeTraceSupportJar)
+    manifest.attributes(
+        "Premain-Class" to "me.helvert.codebridge.uitest.trace.EscapeTraceAgent",
+        "Can-Retransform-Classes" to "true",
+        "Boot-Class-Path" to escapeTraceSupportJar.flatMap { it.archiveFile }.get().asFile.name,
+    )
+}
+tasks.register<JavaExec>("verifyEscapeTraceAgent") {
+    description = "Checks Escape observation and unchanged dispatch against fixtures and the pinned IDE."
+    classpath = escapeAgentTest.runtimeClasspath
+    dependsOn(escapeTraceAgentJar)
+    jvmArgs("-javaagent:${escapeTraceAgentJar.flatMap { it.archiveFile }.get().asFile.absolutePath}", "-Djava.awt.headless=true")
+    mainClass.set("me.helvert.codebridge.uitest.trace.EscapeTraceAgentCheck")
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(25)) })
+    providers.gradleProperty("escapeTraceIde").orNull?.let { args(it) }
+}
 tasks.register<JavaExec>("verifyWindowAgent") {
     description = "Checks frame placement before visibility without launching an IDE or AWT window."
     classpath = windowAgentTest.runtimeClasspath
@@ -128,6 +157,9 @@ tasks.test {
     maxParallelForks = 1
     systemProperty("junit.jupiter.execution.parallel.enabled", "false")
     dependsOn(windowAgentJar)
+    dependsOn(escapeTraceAgentJar)
+    systemProperty("codebridge.escape.agent", escapeTraceAgentJar.flatMap { it.archiveFile }.get().asFile.absolutePath)
+    systemProperty("codebridge.trace.escape", providers.gradleProperty("traceEscape").getOrElse("false"))
     systemProperty("codebridge.window.agent", windowAgentJar.flatMap { it.archiveFile }.get().asFile.absolutePath)
     // Strict timing budgets are opt-in; functional loading is checked on every run.
     systemProperty("codebridge.ui.test.performance", providers.gradleProperty("uiTestPerformance").getOrElse("false"))
