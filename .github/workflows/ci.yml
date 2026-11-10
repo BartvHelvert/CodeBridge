@@ -5,6 +5,14 @@ on:
     branches: [master]
   pull_request:
   workflow_dispatch:
+    inputs:
+      repeat_ui_test:
+        description: >-
+          One UI test class to run ten times per OS, as a `--tests` filter, e.g.
+          `*SplitModeNotebookTest`. Empty runs the suite as a push does. A repeat keeps every
+          run's IDE logs, the passing ones too, so a flake can be read against its neighbours.
+        type: string
+        default: ''
 
 # A newer push to the same branch makes the older run's result moot.
 concurrency:
@@ -27,6 +35,7 @@ env:
 
 jobs:
   test:
+    if: ${{ !inputs.repeat_ui_test }}
     name: Tests (${{ matrix.os }})
     strategy:
       fail-fast: false
@@ -124,6 +133,7 @@ jobs:
   # What the tests never look at: the descriptors only fail when an IDE loads them, and the
   # distributions are only assembled here.
   plugin:
+    if: ${{ !inputs.repeat_ui_test }}
     name: Build and verify plugins
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -193,14 +203,16 @@ jobs:
           retention-days: 14
 
   ui-test:
-    name: Split-mode UI tests (${{ matrix.os }}, ${{ matrix.shard }}/2)
+    name: ${{ inputs.repeat_ui_test && format('Repeat {0} ({1}, {2}/10)', inputs.repeat_ui_test, matrix.os, matrix.repeat) || format('Split-mode UI tests ({0}, {1}/2)', matrix.os, matrix.shard) }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-24.04, windows-2025]
         # Half the test classes each, by test count (see `uiTestShard` in src/ui-test): all of them
         # on one Windows runner outgrew the step's 100 minutes.
-        shard: [1, 2]
+        # One shard in a repeat: the filter picks the class, so sharding it would only halve it.
+        shard: ${{ fromJSON(inputs.repeat_ui_test && '[1]' || '[1,2]') }}
+        repeat: ${{ fromJSON(inputs.repeat_ui_test && '[1,2,3,4,5,6,7,8,9,10]' || '[1]') }}
     runs-on: ${{ matrix.os }}
     # Each test starts a backend and a client, a few minutes apiece on a two-core runner.
     timeout-minutes: 120
@@ -309,8 +321,17 @@ jobs:
       # anything behind that said which ran out.
       - name: Run UI tests
         timeout-minutes: 100
+        env:
+          REPEAT_UI_TEST: ${{ inputs.repeat_ui_test }}
         run: |
           mkdir -p out
+          # Through the environment rather than an expression in the script: a filter is text
+          # whoever dispatched the run chose.
+          if [ -n "$REPEAT_UI_TEST" ]; then
+            test_args=(--tests "$REPEAT_UI_TEST")
+          else
+            test_args=(-PuiTestShard=${{ matrix.shard }}/2)
+          fi
           while true; do
             { date -u +%T; df -h . | tail -n 1; [ "$RUNNER_OS" = Linux ] && free -m | sed -n 2p; } >> out/resource-usage.log 2>&1
             sleep 60
@@ -318,9 +339,9 @@ jobs:
           trap "kill $!" EXIT
           if [ "$RUNNER_OS" = Linux ]; then
             xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24" \
-              ./gradlew :ui-test:test -PsearchableOptions=false -PuiTestShard=${{ matrix.shard }}/2 --console=plain
+              ./gradlew :ui-test:test -PsearchableOptions=false "${test_args[@]}" --console=plain
           else
-            ./gradlew :ui-test:test -PsearchableOptions=false -PuiTestShard=${{ matrix.shard }}/2 --console=plain
+            ./gradlew :ui-test:test -PsearchableOptions=false "${test_args[@]}" --console=plain
           fi
 
       # A test stopped by a timeout leaves its IDEs running, and on Windows their locked files make
@@ -350,7 +371,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v5
         with:
-          name: ui-test-reports-${{ matrix.os }}-${{ matrix.shard }}
+          name: ui-test-reports-${{ matrix.os }}-${{ matrix.shard }}${{ inputs.repeat_ui_test && format('-repeat-{0}', matrix.repeat) || '' }}
           path: |
             src/ui-test/build/reports/tests/
             src/ui-test/build/test-results/
@@ -362,10 +383,10 @@ jobs:
       # the run directories, which would make the upload walk into those -- an exclusion only applies
       # after the walk, and stat on a held `.port` failed the whole upload.
       - name: Upload IDE logs
-        if: failure() || cancelled()
+        if: failure() || cancelled() || inputs.repeat_ui_test
         uses: actions/upload-artifact@v5
         with:
-          name: ui-test-ide-logs-${{ matrix.os }}-${{ matrix.shard }}
+          name: ui-test-ide-logs-${{ matrix.os }}-${{ matrix.shard }}${{ inputs.repeat_ui_test && format('-repeat-{0}', matrix.repeat) || '' }}
           # The test JVM's timeout dumps live under the hidden .intellijPlatform directory.
           include-hidden-files: true
           path: |
