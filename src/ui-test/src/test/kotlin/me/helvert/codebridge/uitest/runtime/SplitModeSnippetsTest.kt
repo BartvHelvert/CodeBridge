@@ -1,11 +1,13 @@
 package me.helvert.codebridge.uitest.runtime
 
+import com.intellij.driver.client.Remote
 import com.intellij.driver.model.OnDispatcher
 import com.intellij.driver.model.RdTarget
 import com.intellij.driver.sdk.invokeAction
 import com.intellij.driver.sdk.ui.components.common.codeEditor
 import com.intellij.driver.sdk.ui.components.common.editor.completionList
 import com.intellij.driver.sdk.ui.components.common.ideFrame
+import com.intellij.driver.sdk.ui.ui
 import com.intellij.ide.starter.ide.IDERemDevTestContext
 import com.intellij.ide.starter.junit5.RemoteDevRun
 import com.intellij.ide.starter.runner.Starter
@@ -41,6 +43,11 @@ class SplitModeSnippetsTest {
         ExtensionStore(context.paths.configDir.resolve("codebridge/extensions"))
             .install(requiredPath("codebridge.textmate.vsix"))
         context.useShortClientSystemDir()
+        // A single request can finish successfully without leaving the first placeholder selected
+        // (#146). Keep template startup and completion delivery in both processes in that run's logs.
+        val trace = "#com.intellij.codeInsight.template.impl.TemplateState,#com.intellij.codeInsight.template.impl.TemplateManagerImpl"
+        context.applyVMOptionsPatch { addSystemProperty("idea.log.trace.categories", trace) }
+        context.frontendIDEContext.applyVMOptionsPatch { addSystemProperty("idea.log.trace.categories", trace) }
         // Completion is asked for once, explicitly. With autopopup on, the popups started while the
         // prefix was typed are restarted by that request within one session, and the lookup can keep
         // the first popup's item: Enter commits it for a request the backend has dropped, and the
@@ -90,7 +97,18 @@ class SplitModeSnippetsTest {
 
             // The placeholder is selected, so typing replaces it; Tab then goes to the body.
             editor.keyboard { key(KeyEvent.VK_ENTER) }
-            awaitProbeValue("the snippet's placeholder selected", { editor.getSelection() }) { it == "name" }
+            // Selection alone cannot tell a dropped insert from a template whose selection was
+            // overwritten. Read documents and selections from both processes in the same sample.
+            awaitProbeValue("the snippet's placeholder selected", {
+                val backendEditors = driver.withContext(OnDispatcher.EDT) {
+                    driver.service(SplitModeWorkbenchTest.EditorFactoryRef::class, RdTarget.BACKEND).getAllEditors()
+                        .map {
+                            it.getDocument().getText() to
+                                driver.cast(it, EditorSelectionRef::class).getSelectionModel().getSelectedText()
+                        }
+                }
+                Triple(editor.getSelection(), editor.text, backendEditors)
+            }) { it.first == "name" }
             editor.keyboard { typeText("Widget") }
             // The template runs on the backend, which Tab has to reach after the typing: on CI a Tab
             // sent with it was taken as an indent, after the placeholder, with the template still on.
@@ -110,6 +128,10 @@ class SplitModeSnippetsTest {
             }
         } catch (error: Throwable) {
             failure = error
+            runCatching {
+                val diagnostics = Files.createDirectories(context.paths.testHome.resolve("split-mode-snippets-probe"))
+                run.driver.ui.robotProvider.saveHierarchy(diagnostics.toString(), "ui.html")
+            }.onFailure(error::addSuppressed)
             throw error
         } finally {
             try {
@@ -119,6 +141,16 @@ class SplitModeSnippetsTest {
                 failure.addSuppressed(closeError)
             }
         }
+    }
+
+    @Remote("com.intellij.openapi.editor.Editor")
+    interface EditorSelectionRef {
+        fun getSelectionModel(): SelectionModelRef
+    }
+
+    @Remote("com.intellij.openapi.editor.SelectionModel")
+    interface SelectionModelRef {
+        fun getSelectedText(): String?
     }
 
     private companion object {
