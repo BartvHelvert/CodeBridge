@@ -16,6 +16,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonPrimitive
 import me.helvert.codebridge.uitest.awaitProbeValue
 import me.helvert.codebridge.uitest.enforcePerformanceBudgets
+import me.helvert.codebridge.uitest.pressUntil
 import org.junit.jupiter.api.AfterAll
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.TestInstance
@@ -400,8 +401,11 @@ class SplitModeNotebookTest {
                 shown.map { it.text } == listOf("# Top", "one", "mid", "two") &&
                         driver.cast(shown.first().component, CellFocusRef::class).isFocusOwner()
             }) { it }
-            frame.keyboard { key(KeyEvent.VK_ESCAPE) }
-            awaitProbeValue("the markdown cell rendered", ::cells) { it == listOf("one", "mid", "two") }
+            // Pressed again if it never arrived: a key press is taken out of the queue, and dropped,
+            // for as long as the IDE is waiting on a lock. See [pressUntil].
+            pressUntil("the markdown cell rendered", press = { frame.keyboard { key(KeyEvent.VK_ESCAPE) } }) {
+                cells() == listOf("one", "mid", "two")
+            }
             hostCells("""["# Top","one","mid","two"]""")
             Unit
         }
