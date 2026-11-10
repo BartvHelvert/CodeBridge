@@ -55,6 +55,7 @@ import me.helvert.codebridge.rpc.CustomEditorTypeDto
 import me.helvert.codebridge.rpc.CustomEditorTypes
 import me.helvert.codebridge.rpc.WebviewDto
 import me.helvert.codebridge.rpc.WebviewEventDto
+import org.jetbrains.annotations.TestOnly
 import java.awt.BorderLayout
 import java.beans.PropertyChangeEvent
 import java.beans.PropertyChangeListener
@@ -200,6 +201,14 @@ internal class CodeBridgeCustomEditors(private val project: Project, val scope: 
             }
         }
     }
+
+    /**
+     * What the client itself holds [pattern] opening in, which is what [defaultTypeOf] reads: a
+     * test that has just set the default waits for this rather than for the settings file, which
+     * is written before anything applies it.
+     */
+    @TestOnly
+    fun defaultForTest(pattern: String): String? = setup.associations[pattern]
 
     /** Shows [file] -- or the file it stands for -- as text, in place of its custom editor. */
     fun reopenAsText(file: VirtualFile) {

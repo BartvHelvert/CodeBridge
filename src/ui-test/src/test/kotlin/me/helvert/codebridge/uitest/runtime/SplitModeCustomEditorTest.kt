@@ -176,6 +176,13 @@ class SplitModeCustomEditorTest {
         awaitProbeValue("the default editor association saved", { userSettings.readText() }) {
             Regex(""""\*\.probetext"\s*:\s*"default"""").containsMatchIn(it)
         }
+        // Written before it is applied: the settings file is the first thing *Set Default* does, and
+        // the client is told the new association only once the backend has taken and applied it.
+        // A file opened in between still opens in the editor the user has just stopped choosing,
+        // so the reopen below has to wait for the client to be holding it, not for the file.
+        awaitProbeValue("the client holding the new default", {
+            runCatching { customEditors().defaultForTest("*.probetext") }.getOrNull()
+        }) { it == "default" }
         // Kept by the open tab, as VS Code keeps it; a file opened afterwards opens as text.
         awaitProbeValue("the custom editor still shown", { pageShowing() }) { it }
         driver.invokeAction("CloseContent", component = frame.jcef().component)
@@ -335,6 +342,15 @@ class SplitModeCustomEditorTest {
     private fun WorkbenchProbe.selectedEditorModified(): Boolean? = runCatching {
         driver.service(FileEditorManagerRef::class, driver.singleProject()).getSelectedEditor()?.isModified()
     }.getOrNull()
+
+    /** The client's own view of what files open in, which is what decides a file it opens. */
+    private fun WorkbenchProbe.customEditors(): CustomEditorsRef =
+        driver.service(CustomEditorsRef::class, driver.singleProject(RdTarget.FRONTEND), RdTarget.FRONTEND)
+
+    @Remote("me.helvert.codebridge.webview.CodeBridgeCustomEditors", plugin = "me.helvert.codebridge.runtime/CodeBridge.webview.frontend")
+    interface CustomEditorsRef {
+        fun defaultForTest(pattern: String): String?
+    }
 
     @Remote("com.intellij.openapi.ui.popup.util.PopupUtil")
     interface PopupUtilRef {
