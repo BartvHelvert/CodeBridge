@@ -1,5 +1,8 @@
 package me.helvert.codebridge.uitest.runtime
 
+import com.intellij.driver.client.service
+import com.intellij.driver.model.OnDispatcher
+import com.intellij.driver.model.RdTarget
 import com.intellij.driver.sdk.invokeAction
 import com.intellij.driver.sdk.ui.components.common.codeEditor
 import com.intellij.driver.sdk.ui.components.common.editor.intentionList
@@ -23,7 +26,18 @@ class SplitModeActionsTest {
             editor.goToPosition(1, 6)
             driver.invokeAction("RenameElement", component = editor.component)
             awaitProbeValue("the rename placeholder selected", { editor.getSelection() }) { it == "value" }
-            editor.keyboard { typeText("renamed"); key(KeyEvent.VK_ENTER) }
+            editor.keyboard { typeText("renamed") }
+            // The rename template runs on the backend, which Enter has to reach after the typing,
+            // as the snippet test's Tab does. An Enter that arrives first finds no template to
+            // finish and is taken as a plain newline: `let renamed`, `=1;`, and the other
+            // occurrence left alone.
+            awaitProbeValue("the typed name on the backend", {
+                driver.withContext(OnDispatcher.EDT) {
+                    driver.service(SplitModeWorkbenchTest.EditorFactoryRef::class, RdTarget.BACKEND).getAllEditors()
+                        .map { it.getDocument().getText() }
+                }
+            }) { documents -> documents.any { "let renamed=1;" in it } }
+            editor.keyboard { key(KeyEvent.VK_ENTER) }
             awaitProbeValue(
                 "all occurrences renamed in the client",
                 { editor.text }) { it == "let renamed=1;\nrenamed;\nERROR\n" }
