@@ -20,6 +20,7 @@ import com.intellij.openapi.command.impl.FinishMarkAction
 import com.intellij.openapi.command.impl.StartMarkAction
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.editor.RangeMarker
 import com.intellij.openapi.fileEditor.FileDocumentManager
@@ -269,10 +270,25 @@ internal class CodeBridgeRenamer(
         // made for that text, then lands on the wrong characters of this one. Waited for as long
         // as the rename's progress shows, which can be cancelled, not the usual moment: on a busy
         // machine the reverting took longer than that, and the stale edit was applied.
+        val held = features.mirroredVersion(file)
+        val asked = System.nanoTime()
         if (!features.awaitMirrored(file, text, MIRROR_WAIT_MILLIS)) {
+            LOG.info("Nothing renamed in ${file.name}: the host sat at version $held and never held the editor's text")
             return HostedLanguageFeatures.RenameResult(null, listOf(NOT_CAUGHT_UP))
         }
-        return features.renameEdits(file, request.line, request.column, newName, request.plan)
+        val caughtUp = features.mirroredVersion(file)
+        val result = features.renameEdits(file, request.line, request.column, newName, request.plan)
+        // The host's version at each step, because its text cannot tell them apart: what the
+        // template put back is what was there before it, so a copy that has seen neither the typing
+        // nor the reverting reads as caught up. A version that moves between the wait and the answer
+        // is a host that was still applying the typing while it worked the edit out, and an edit in
+        // that text's coordinates lands on the wrong characters of this one.
+        LOG.info(
+            "Renamed '${request.current}' to '$newName' in ${file.name}: the host held version $held, " +
+                "$caughtUp once it held the text after ${(System.nanoTime() - asked) / 1_000_000}ms, " +
+                "and ${features.mirroredVersion(file)} once it had answered"
+        )
+        return result
     }
 
     private fun apply(result: HostedLanguageFeatures.RenameResult, title: String) {
@@ -303,6 +319,8 @@ internal class CodeBridgeRenamer(
     }
 
     private companion object {
+        private val LOG = Logger.getInstance(CodeBridgeRenamer::class.java)
+
         const val TITLE = "Rename"
         const val PRIMARY = "NAME"
         const val OTHER = "OCCURRENCE"
