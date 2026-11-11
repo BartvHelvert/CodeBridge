@@ -3277,6 +3277,18 @@ class HostedLanguageFeatures(
     }
 
     /**
+     * The version the host holds for [file], or null while it holds no copy of it.
+     *
+     * For telling a copy that is caught up from one that has not started: after a template the
+     * text put back is the text before it, so [awaitMirrored] cannot tell those apart by text.
+     */
+    fun mirroredVersion(file: VirtualFile): Int? {
+        val mirror = documents ?: return null
+        val uri = uris[file] ?: return null
+        return mirror.versionOf(uri)
+    }
+
+    /**
      * Waits until the host holds [text] for [file], or gives up.
      *
      * A formatter's edits are offsets into the host's copy. Edits are mirrored from a queue, so
